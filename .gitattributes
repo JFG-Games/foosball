@@ -1,0 +1,31 @@
+# Normalise line endings in the repository to LF. This is a Node + TypeScript
+# project that builds and deploys on Linux, so CRLF in the source tree causes
+# real problems (shell scripts, Docker builds, CI diffs). Windows checkouts
+# still get LF — every editor and toolchain here handles it.
+
+* text=auto eol=lf
+
+# Windows batch files genuinely require CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets — never diff, never normalise.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.glb binary
+*.gltf binary
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.zip binary
+
+# The lockfile is generated. Keep it out of diffs and out of language stats.
+package-lock.json -diff linguist-generated

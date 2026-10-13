@@ -1,0 +1,33 @@
+{
+  "name": "lagos-foosball",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "3D multiplayer foosball built to run inside the Lagos Life / Vatar Games platform",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n web,server -c cyan,magenta \"npm:dev:web\" \"npm:dev:server\"",
+    "dev:web": "vite",
+    "dev:server": "tsx watch server/index.ts",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "tsx test/sim.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.7",
+    "three": "^0.186.1",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/three": "^0.186.0",
+    "@types/ws": "^8.18.2",
+    "concurrently": "^9.2.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^6.4.4"
+  }
+}
