@@ -13,7 +13,7 @@
     "dev:server": "tsx watch server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "tsx test/sim.test.ts",
+    "test": "tsx --test test/sim.test.ts test/match.test.ts test/server.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

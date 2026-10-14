@@ -15,7 +15,8 @@ export interface Connection {
   readonly isOpen: boolean;
 }
 
-export function createConnection(url: string, sessionToken: string): Connection {
+/** `makeJoin` builds the first message, sent as soon as the socket opens. */
+export function createConnection(url: string, makeJoin: () => ClientMessage): Connection {
   const socket = new WebSocket(url);
 
   const messageHandlers: ((message: ServerMessage) => void)[] = [];
@@ -23,8 +24,7 @@ export function createConnection(url: string, sessionToken: string): Connection 
   const closeHandlers: (() => void)[] = [];
 
   socket.addEventListener("open", () => {
-    const join: ClientMessage = { t: "join", sessionToken };
-    socket.send(JSON.stringify(join));
+    socket.send(JSON.stringify(makeJoin()));
     for (const handler of openHandlers) handler();
   });
 
@@ -40,6 +40,9 @@ export function createConnection(url: string, sessionToken: string): Connection 
 
   socket.addEventListener("close", () => {
     for (const handler of closeHandlers) handler();
+  });
+  socket.addEventListener("error", () => {
+    // A failed connect also fires "close"; nothing extra to do, but don't leave it unhandled.
   });
 
   return {

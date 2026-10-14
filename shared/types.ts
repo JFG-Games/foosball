@@ -45,4 +45,36 @@ export interface Snapshot {
   serverTimeMs: number;
   /** Ticks the ball has been stopped; drives the re-serve rule. */
   stuckTicks: number;
+  /**
+   * Bumped every time the ball is teleported (goal, serve, stuck re-serve).
+   * Clients must not interpolate across an epoch change.
+   */
+  epoch: number;
+}
+
+/** A ball contact worth reacting to (sound, shake, particles, comic words). */
+export interface HitEvent {
+  /** `man` = struck by a player, `wall` = bounced off a rail. */
+  k: "man" | "wall";
+  /** Where on the table it happened. */
+  x: number;
+  z: number;
+  /** Rod index for a `man` hit, -1 for a wall. */
+  rod: number;
+  /** Ball speed just before / after the contact (m/s). */
+  vin: number;
+  vout: number;
+  /** Ball x-velocity before the contact (tells you which way it was heading). */
+  vx: number;
+}
+
+/** Final numbers for a finished match. */
+export interface MatchStats {
+  goals: Record<Team, number>;
+  /** Fastest ball speed produced by each team's men (m/s). */
+  fastest: Record<Team, number>;
+  /** Strong shots that a team's men blocked or deflected. */
+  saves: Record<Team, number>;
+  /** Total play time in ms (countdown and celebrations excluded). */
+  playMs: number;
 }

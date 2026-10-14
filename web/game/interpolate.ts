@@ -62,6 +62,8 @@ export class SnapshotBuffer {
 
   /** Record a snapshot that just arrived. */
   push(snapshot: Snapshot, now = performance.now()): void {
+    // The ball was teleported (goal, serve, re-serve): never blend across it.
+    if (this.latest && snapshot.epoch !== this.latest.epoch) this.samples = [];
     this.samples.push({ at: now, snap: snapshot });
     this.latest = snapshot;
 

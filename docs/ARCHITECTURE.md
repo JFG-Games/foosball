@@ -42,39 +42,51 @@
 ## Authority model: server-authoritative
 
 - The server owns the truth and steps the simulation at `SIM_HZ` (60 Hz).
-- Clients send **inputs only** (`PlayerInput`: a desired angle + slide per rod).
-- The server applies inputs, advances the sim, and broadcasts snapshots at
-  `SNAPSHOT_HZ` (20 Hz).
-- Clients **predict** locally using the *same* `shared/sim.ts` and reconcile
-  when a snapshot arrives, so input feels instant without trusting the client.
+- Clients send **inputs only** (a desired angle + slide per rod, for the four rods they own).
+- The server validates (own rods only, finite numbers, rate-limited), advances the
+  sim, and broadcasts snapshots at `SNAPSHOT_HZ` (20 Hz).
+- Clients draw the ball and the opponent **interpolated** between snapshots (a short
+  delay buys perfectly smooth motion), while the player's **own rods are applied
+  locally the instant they move**, so controls never wait on the network.
 
-**Hard rule:** `shared/sim.ts` must be deterministic and free of wall-clock
-time, `Math.random()` and I/O. If it isn't, prediction and the authoritative
-state will drift.
+**Hard rule:** `shared/sim.ts` and `shared/match.ts` must be deterministic and free of
+wall-clock time, `Math.random()` and I/O. Time only enters through `tick()`.
 
-### Tick loop
+### Match flow (`shared/match.ts`)
 
 ```
-every 1000 / SIM_HZ ms:
-  drain buffered inputs (reject any beyond MAX_INPUTS_PER_SEC)
-  for each tick:
-    apply inputs -> step(state, inputs, dtMs)
-  every (SIM_HZ / SNAPSHOT_HZ) ticks:
-    broadcastSnapshot(state)          # { t: "snapshot", snapshot }
-  on goal / match end:                # { t: "goal" } / { t: "end" }
-    update score, reset ball, report result to Vatar
+countdown ──▶ play ──goal──▶ goal (celebration pause) ──▶ play …
+                              └─ winning goal ─▶ over
 ```
 
-Use an **accumulator** so a slow frame runs several catch-up steps rather than
-losing time or spiralling.
+`MatchCore` is transport-independent. The server's `Room` drives one on a real-time
+loop with a catch-up accumulator; the browser's solo mode (`LocalSession`) drives
+the very same class locally, so "what happens after a goal" cannot differ between modes.
+The sim reports **hit events** (ball contacts with speeds) and an **epoch** counter that
+bumps whenever the ball is teleported, so clients never interpolate across a serve.
+
+### Solo mode
+
+`LocalSession` = `MatchCore` + `Bot` (`shared/bot.ts`) at 60 Hz in the browser. Zero
+latency, works without a server, and because the clock is ours the slow-motion moments
+slow the *simulation* too. Online, slow-mo can only affect what is drawn.
+
+### Ready handshake
+
+Once two players are paired the server **holds the match** until both send `ready`
+(a first-timer is in the tutorial, for instance). The other player sees
+"opponent is getting ready" with no cancel button (it returns after 45 s). If someone
+never readies within 2 minutes the room is closed.
 
 ## Message protocol
 
 Defined once in [`shared/protocol.ts`](../shared/protocol.ts) and imported by
-both sides. Bump `PROTOCOL_VERSION` on any wire change.
+both sides. Bump `PROTOCOL_VERSION` on any wire change (mismatched clients are told to reload).
 
-- **client → server:** `join`, `ready`, `input`, `leave`
-- **server → client:** `welcome`, `peer`, `start`, `snapshot`, `goal`, `end`, `error`
+- **client → server:** `join` (quick / `create` / `roomCode`, optional `vatarMatchId`),
+  `ready`, `input`, `rematch`, `leave`
+- **server → client:** `waiting`, `welcome`, `peer`, `opponent`, `start`, `snapshot`,
+  `fx` (hit events), `goal`, `serve`, `end`, `rematch`, `error`
 
 ## Table model
 

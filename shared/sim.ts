@@ -16,7 +16,13 @@ import {
   WALL_RESTITUTION,
   type Team,
 } from "./constants";
-import type { PlayerInput, RodState, Snapshot, Vec3 } from "./types";
+import type { HitEvent, PlayerInput, RodState, Snapshot, Vec3 } from "./types";
+
+/** Contacts slower than this (m/s) are just resting touches, not events. */
+const HIT_MIN_SPEED = 0.35;
+
+/** Cap on events recorded per tick, so a ball jammed in a corner can't spam. */
+const MAX_HITS_PER_TICK = 4;
 
 /**
  * Deterministic simulation of the ball and rods.
@@ -50,6 +56,10 @@ export interface StepResult {
   next: Snapshot;
   /** Set when a goal was scored during this tick. */
   scored: Team | null;
+  /** Where the ball crossed the line and how fast, when `scored` is set. */
+  goal: { pos: Vec3; vel: Vec3 } | null;
+  /** Notable ball contacts this tick, in order. */
+  hits: HitEvent[];
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -133,6 +143,8 @@ function collideManBall(
   man: Man,
   manVelX: number,
   manVelZ: number,
+  rod: number,
+  hits: HitEvent[],
 ): void {
   const dx = ball.pos.x - man.x;
   const dz = ball.pos.z - man.z;
@@ -155,22 +167,53 @@ function collideManBall(
   const normalSpeed = relX * nx + relZ * nz;
   if (normalSpeed > 0) return; // already separating
 
+  const vin = Math.hypot(ball.vel.x, ball.vel.z);
+  const vx = ball.vel.x;
+
   const impulse = -(1 + MAN_RESTITUTION) * normalSpeed;
   ball.vel.x += nx * impulse;
   ball.vel.z += nz * impulse;
+
+  if (-normalSpeed > HIT_MIN_SPEED && hits.length < MAX_HITS_PER_TICK) {
+    hits.push({
+      k: "man",
+      x: ball.pos.x,
+      z: ball.pos.z,
+      rod,
+      vin,
+      vout: Math.hypot(ball.vel.x, ball.vel.z),
+      vx,
+    });
+  }
 }
 
 /** Keep the ball on the table, or report a goal. */
-function resolveBounds(ball: { pos: Vec3; vel: Vec3 }): Team | null {
+function resolveBounds(ball: { pos: Vec3; vel: Vec3 }, hits: HitEvent[]): Team | null {
   const r = TABLE.ballRadius;
   const halfWidth = TABLE.width / 2 - r;
   const halfLength = TABLE.length / 2;
 
+  const wall = (approach: number): void => {
+    if (approach > HIT_MIN_SPEED && hits.length < MAX_HITS_PER_TICK) {
+      hits.push({
+        k: "wall",
+        x: ball.pos.x,
+        z: ball.pos.z,
+        rod: -1,
+        vin: Math.hypot(ball.vel.x, ball.vel.z),
+        vout: approach * WALL_RESTITUTION,
+        vx: ball.vel.x,
+      });
+    }
+  };
+
   // Side rails.
   if (ball.pos.z < -halfWidth) {
+    wall(-ball.vel.z);
     ball.pos.z = -halfWidth;
     ball.vel.z = Math.abs(ball.vel.z) * WALL_RESTITUTION;
   } else if (ball.pos.z > halfWidth) {
+    wall(ball.vel.z);
     ball.pos.z = halfWidth;
     ball.vel.z = -Math.abs(ball.vel.z) * WALL_RESTITUTION;
   }
@@ -180,10 +223,12 @@ function resolveBounds(ball: { pos: Vec3; vel: Vec3 }): Team | null {
   // The left goal belongs to the left team, so crossing it scores for `right`.
   if (ball.pos.x - r < -halfLength) {
     if (inMouth) return "right";
+    wall(-ball.vel.x);
     ball.pos.x = -halfLength + r;
     ball.vel.x = Math.abs(ball.vel.x) * WALL_RESTITUTION;
   } else if (ball.pos.x + r > halfLength) {
     if (inMouth) return "left";
+    wall(ball.vel.x);
     ball.pos.x = halfLength - r;
     ball.vel.x = -Math.abs(ball.vel.x) * WALL_RESTITUTION;
   }
@@ -214,6 +259,8 @@ export function step(state: Snapshot, inputs: PlayerInput[], dtMs: number): Step
   };
 
   let scored: Team | null = null;
+  let goal: { pos: Vec3; vel: Vec3 } | null = null;
+  const hits: HitEvent[] = [];
   let prevMen = prevRods.map((rod, i) => manPositions(i, rod));
 
   for (let s = 1; s <= substeps; s++) {
@@ -235,13 +282,21 @@ export function step(state: Snapshot, inputs: PlayerInput[], dtMs: number): Step
       const before = prevMen[i];
       const after = nextMen[i];
       for (let m = 0; m < after.length; m++) {
-        collideManBall(ball, after[m], (after[m].x - before[m].x) / dt, (after[m].z - before[m].z) / dt);
+        collideManBall(
+          ball,
+          after[m],
+          (after[m].x - before[m].x) / dt,
+          (after[m].z - before[m].z) / dt,
+          i,
+          hits,
+        );
       }
     }
 
-    const goal = resolveBounds(ball);
-    if (goal) {
-      scored = goal;
+    const crossed = resolveBounds(ball, hits);
+    if (crossed) {
+      scored = crossed;
+      goal = { pos: { ...ball.pos }, vel: { ...ball.vel } };
       break;
     }
 
@@ -250,13 +305,15 @@ export function step(state: Snapshot, inputs: PlayerInput[], dtMs: number): Step
 
   const score = { ...state.score };
   let stuckTicks = state.stuckTicks;
+  let epoch = state.epoch;
 
   if (scored) {
     score[scored] += 1;
-    // Serve from the centre on the next tick.
+    // Park the ball on the centre spot; the match layer decides when to serve.
     ball.pos = { x: 0, y: TABLE.ballRadius, z: 0 };
     ball.vel = { x: 0, y: 0, z: 0 };
     stuckTicks = 0;
+    epoch += 1;
   }
   capSpeed(ball);
 
@@ -268,6 +325,7 @@ export function step(state: Snapshot, inputs: PlayerInput[], dtMs: number): Step
     ball.pos = { x: 0, y: TABLE.ballRadius, z: 0 };
     ball.vel = { x: 0, y: 0, z: 0 };
     stuckTicks = 0;
+    epoch += 1;
   }
 
   return {
@@ -278,8 +336,43 @@ export function step(state: Snapshot, inputs: PlayerInput[], dtMs: number): Step
       score,
       serverTimeMs: state.serverTimeMs + dtMs,
       stuckTicks,
+      epoch,
     },
     scored,
+    goal,
+    hits,
+  };
+}
+
+/**
+ * Advance only the rods (the ball is left exactly where it is). Used while
+ * play is paused — countdown and goal celebrations — so players can still move.
+ */
+export function settleRods(state: Snapshot, inputs: PlayerInput[], dtMs: number): Snapshot {
+  return {
+    ...state,
+    tick: state.tick + 1,
+    rods: applyInputs(state.rods, inputs),
+    serverTimeMs: state.serverTimeMs + dtMs,
+  };
+}
+
+/**
+ * Put the ball on the centre spot and give it a gentle push toward `toward`
+ * (the side that just conceded, so they get first touch). The sideways
+ * component comes from the tick counter, keeping this fully deterministic.
+ */
+export function serveBall(state: Snapshot, toward: Team | null): Snapshot {
+  const dir = toward === "left" ? -1 : 1;
+  const sideways = (((state.tick * 37) % 11) - 5) / 5; // -1..1
+  return {
+    ...state,
+    ball: {
+      pos: { x: 0, y: TABLE.ballRadius, z: 0 },
+      vel: { x: dir * 0.55, y: 0, z: sideways * 0.35 },
+    },
+    stuckTicks: 0,
+    epoch: state.epoch + 1,
   };
 }
 
@@ -295,5 +388,6 @@ export function initialState(): Snapshot {
     score: { left: 0, right: 0 } satisfies Record<Team, number>,
     serverTimeMs: 0,
     stuckTicks: 0,
+    epoch: 0,
   };
 }

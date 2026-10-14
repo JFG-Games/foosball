@@ -23,3 +23,12 @@ export const VATAR_SECRET = process.env.VATAR_SECRET ?? "";
 /** Sandbox mode uses test keys and skips real settlement. */
 export const VATAR_SANDBOX =
   (process.env.VATAR_SANDBOX ?? "true").toLowerCase() !== "false";
+
+/**
+ * Separate "results" secret used to sign match results (HMAC). Kept apart from
+ * VATAR_SECRET so a leaked API key can't forge a result. Server-side only.
+ */
+export const VATAR_RESULTS_SECRET = process.env.VATAR_RESULTS_SECRET ?? "";
+
+/** True when real (or sandbox) Vatar credentials are configured. */
+export const VATAR_LIVE = VATAR_SECRET.length > 0;

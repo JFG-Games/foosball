@@ -16,12 +16,12 @@ export const MAX_INPUTS_PER_SEC = 60;
 export const MATCH_SCORE_TO_WIN = 5;
 
 /** Pause after a goal, before the next ball is served (ms). */
-export const GOAL_PAUSE_MS = 1200;
+export const GOAL_PAUSE_MS = 2600;
 
 /** Length of a generated room code (e.g. "K4Q7Z"). */
 export const ROOM_CODE_LENGTH = 5;
 
-/** How long two players may sit in a room before the match starts (ms). */
+/** Pre-kickoff countdown once both players are seated (ms). */
 export const COUNTDOWN_MS = 3000;
 
 /** The two competing sides. `left` defends the -x goal; `right` defends +x. */
@@ -37,8 +37,8 @@ export const TABLE = {
   length: 1.2,
   /** Inner playfield width along z. */
   width: 0.68,
-  /** Height of each rod's axis above the playing surface. */
-  rodHeight: 0.08,
+  /** Height of each rod's axis above the playing surface (render only). */
+  rodHeight: 0.058,
   /** Ball radius (a 34 mm ball -> ~0.017 m). */
   ballRadius: 0.017,
   /** Table top thickness. */

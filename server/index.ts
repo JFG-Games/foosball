@@ -17,7 +17,7 @@ import { Lobby } from "./lobby";
  * It deliberately serves NO static assets: the client is hosted separately
  * over HTTPS so the Lagos Life shell can frame it.
  */
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({ port: PORT, maxPayload: 16 * 1024 });
 const lobby = new Lobby();
 
 wss.on("connection", (socket: WebSocket) => {

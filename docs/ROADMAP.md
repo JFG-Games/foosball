@@ -47,19 +47,26 @@ demoable before moving on.
 
 ## M5 — Vatar integration
 
-- [ ] Load the browser SDK and complete `Vatar.init()`
-- [ ] Server `POST /session/verify` on join; reject unverified sockets
-- [ ] Submit score to the leaderboard at match end
+- [x] Load the browser SDK and complete `Vatar.init()`; local fallback outside the shell
+- [x] Server `POST /session/verify` (`{ session }`) on join; reject unverified sockets
+- [x] Fresh session token (`Vatar.session()`) on every join — tokens expire after 15 min
+- [x] Leaderboard UI + score submitted after each match (respects the 20 s rate limit)
+- [x] `Vatar.onPause` / `onResume` pause the game and mute audio
+- [x] Report results for platform matches: `POST /matches/{id}/result` with the documented
+      HMAC (needs `VATAR_RESULTS_SECRET`); verified against `GET /matches/{id}` first
+- [ ] **Test the above against the sandbox** (signing and match reporting are implemented
+      from the docs but not yet exercised with real keys)
 - [ ] In-game purchase flow (verify + deliver server-side)
-- [ ] Report match result to `POST /matches/{id}/result` with HMAC
 
 ## M6 — Polish & ship
 
-- [x] HUD: score, connection status, goal + match-end flashes
-      (`web/hud.ts`)
-- [ ] HUD extras: match timer, rematch button
-- [ ] Audio, stadium ambience, goal effects
-- [ ] Mobile / touch tuning, performance profiling
+- [x] HUD: scoreboard with team plates, timer, rod chips, kick button
+- [x] Audio (synthesised), haptics, goal effects, comic words, camera juice
+- [x] Mobile controls: row-grab, flick-to-kick, auto rod-select; adaptive quality
+- [x] Single player vs bot (rookie / pro / legend)
+- [x] Private rooms with code / invite link; rematch
+- [x] First-time tutorial; the opponent is held while it runs
+- [ ] Reconnect: rejoin an in-progress match after a dropped socket
 - [ ] `frame-ancestors` header, HTTPS hosting, `wss://` server
 - [ ] Sandbox test pass → submit for review → live keys
 
@@ -67,5 +74,5 @@ demoable before moving on.
 
 - ~~Singles (one player, four rods) or doubles?~~ Settled: singles — one
   player holds all four rods.
-- Matchmaking by skill, or open rooms with codes?
+- Matchmaking by skill? (Quick match and private codes exist; skill matching does not.)
 - Any naira-staked matches, or leaderboard-only?

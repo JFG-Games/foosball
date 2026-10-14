@@ -14,36 +14,49 @@
 It is **not** an API for reading or editing the main Lagos Life simulation
 (no access to a player's character, job, property or general naira balance).
 It is a platform SDK for **embedding your own web game inside the Lagos Life
-app** and borrowing its services:
+app** and borrowing its services. Every browser method returns a Promise.
 
-| Service            | Browser SDK                          | Server (REST)                        |
-| ------------------ | ------------------------------------ | ------------------------------------ |
-| Player identity    | `Vatar.init()`                       | `POST /session/verify`               |
-| Leaderboard        | `Vatar.submitScore`, `Vatar.leaderboard` | —                                |
-| Purchases          | `Vatar.purchase(productId)`          | `GET /purchases/{id}`, `POST /purchases/{id}/deliver` |
-| Multiplayer match  | (SDK match methods)                  | `GET /matches/{id}`, `POST /matches/{id}/result` |
-| Webhooks           | —                                    | e.g. `purchase.paid` (signed)        |
+| Service          | Browser SDK                                                                         | Server (REST)                                          |
+| ---------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Player identity  | `Vatar.init()` → `{ player: { id, name, avatar }, session, mode }`                  | `POST /session/verify` `{ session }` → `{ playerId, name, gameId, exp, mode }` |
+| Fresh token      | `Vatar.session()` → `{ session, exp }`                                              | —                                                      |
+| Leaderboard      | `Vatar.submitScore(n)` → `{ best, accepted }`; `Vatar.leaderboard()` → `{ top, me }` | —                                                      |
+| Purchases        | `Vatar.purchase(id)`, `onPurchase`, `purchases()`                                    | `GET /purchases/{id}`, `POST /purchases/{id}/deliver`  |
+| Pause / resume   | `Vatar.onPause(fn)`, `Vatar.onResume(fn)`                                            | —                                                      |
+| Platform matches | `Vatar.match.create/join/quick/current/leave/onUpdate`                              | `GET /matches/{id}`, `POST /matches/{id}/result`       |
+
+Limits: `submitScore` accepts **one score per player every 20 s**; session tokens
+expire **15 minutes** after issue.
 
 ### Identity
 
-`Vatar.init()` returns a **pseudonymous** `playerId`, `displayName`, optional
-`avatarUrl` and a short-lived `sessionToken`. You do **not** get email, phone,
-location or money. Always re-verify the token server-side with
-`POST /session/verify` before seating a player.
+Always re-verify the token server-side with `POST /session/verify` before seating a
+player. You get a **pseudonymous** id, a display name and optional avatar — no email,
+phone, location or money. This game fetches a fresh token (`Vatar.session()`) each time it joins.
 
 ### Purchases
 
-`Vatar.purchase(productId)` opens Lagos Life's checkout and returns a purchase
-id. Your **server** then calls `GET /purchases/{id}` to confirm, and
-`POST /purchases/{id}/deliver` to mark it delivered. Amounts are in naira.
-Never grant an in-game item from a client-reported purchase.
+`Vatar.purchase(productId)` opens Lagos Life's checkout and returns a purchase id. Your
+**server** then calls `GET /purchases/{id}` to confirm (`status` is `paid`, `delivered` or
+`refunded`; amounts in naira) and `POST /purchases/{id}/deliver`. Never grant an item
+from a client-reported purchase. *(Not wired into the game yet.)*
 
-### Matches
+### Matches and signed results
 
-The match endpoints cover **matchmaking and result submission**, not per-frame
-state sync. Use them to create/join/find matches and to report the final score
-(`POST /matches/{id}/result`, which requires an **HMAC signature**). For
-real-time play, run your own WebSocket channel on top.
+The match endpoints cover **matchmaking and result submission**, not per-frame state.
+For real-time play this game runs its own WebSocket channel.
+
+To report a result: `POST /matches/{id}/result` with body `{ "winner": "<playerId>" | "draw" }`
+and headers `Authorization: Bearer <secret>`, `X-Vatar-Timestamp` (whole seconds, within
+5 min) and `X-Vatar-Signature: v1=<hex>`. The signature is an **HMAC-SHA256** keyed with
+`VATAR_RESULTS_SECRET` over five newline-joined lines: `POST`, the full path
+(`/api/games/v1/matches/{id}/result`), the timestamp, the match's `nonce` (from
+`GET /matches/{id}`) and the hex SHA-256 of the exact body. A result can only be posted
+while the match is `playing` and settles once (`409 already_settled` otherwise).
+Implemented in [`server/vatar/client.ts`](../server/vatar/client.ts).
+
+The game only reports when **both** players name the same `vatarMatchId` *and* the
+platform's `GET /matches/{id}` lists both of them as players.
 
 ## Setup flow
 
@@ -68,6 +81,5 @@ real-time play, run your own WebSocket channel on top.
 - Browser SDK wrapper: [`web/vatar/client.ts`](../web/vatar/client.ts)
 - Server REST client: [`server/vatar/client.ts`](../server/vatar/client.ts)
 
-`server/vatar/client.ts` contains `TODO`s for the two things to confirm first:
-exact request/response field names, and the HMAC signing scheme for match
-results.
+The signing and match-reporting paths follow the published docs but have not yet
+been exercised against the sandbox — do that before going live.
