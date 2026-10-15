@@ -12,6 +12,7 @@
     "dev:web": "vite",
     "dev:server": "tsx watch server/index.ts",
     "run:server": "tsx server/index.ts",
+    "start": "tsx server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
     "test": "tsx --test test/sim.test.ts test/match.test.ts test/server.test.ts",
