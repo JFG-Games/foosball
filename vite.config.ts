@@ -1,6 +1,11 @@
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 
+// Lagos Life frames the game in an iframe, so the host must allow it (see docs/ARCHITECTURE.md).
+const FRAMING_HEADERS = {
+  "Content-Security-Policy": "frame-ancestors https://lagoslife.app https://*.lagoslife.app",
+};
+
 export default defineConfig({
   // The browser client lives in web/; server code is never bundled.
   root: "web",
@@ -17,8 +22,18 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    headers: FRAMING_HEADERS,
     host: true, // expose on the LAN so you can test on a phone
+    // Hostnames (not URLs) Vite will serve; needed to reach the dev server via ngrok.
+    allowedHosts: ["headstone-deduce-resort.ngrok-free.dev"],
+    // Forward the game WebSocket through Vite so one tunnel (ngrok → 5173) serves
+    // both the page and the game server; the browser connects to `/ws` same-origin.
+    proxy: {
+      "/ws": { target: "ws://localhost:8080", ws: true, rewrite: () => "/" },
+    },
   },
+  // `vite preview` serves the production build; same framing rule.
+  preview: { headers: FRAMING_HEADERS },
   build: {
     outDir: "../dist",
     emptyOutDir: true,

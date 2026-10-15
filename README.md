@@ -33,7 +33,7 @@ identity, leaderboard and match APIs.
 A **server-authoritative** simulation (Node + `ws`) drives two players who own opposite
 ends of the table; the browser only sends inputs and renders; **Vatar's REST API is called
 server-side only** so no secret ever reaches the client. Solo mode runs the *same*
-simulation locally.
+simulation locally.....
 
 ## Quickstart
 
