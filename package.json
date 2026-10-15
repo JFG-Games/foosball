@@ -11,6 +11,7 @@
     "dev": "concurrently -n web,server -c cyan,magenta \"npm:dev:web\" \"npm:dev:server\"",
     "dev:web": "vite",
     "dev:server": "tsx watch server/index.ts",
+    "run:server": "tsx server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
     "test": "tsx --test test/sim.test.ts test/match.test.ts test/server.test.ts",
