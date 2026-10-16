@@ -56,6 +56,7 @@ demoable before moving on.
       HMAC (needs `VATAR_RESULTS_SECRET`); verified against `GET /matches/{id}` first
 - [ ] **Test the above against the sandbox** (signing and match reporting are implemented
       from the docs but not yet exercised with real keys)
+- [x] Purchases stored in Redis (`REDIS_URL`) so they survive deploys
 - [x] In-game purchase flow (verify + deliver server-side): `gold_kit`, webhook, restore on load
 - [x] Quick match is paired through `Vatar.match.quick`, so results are posted to a platform match
 

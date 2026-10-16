@@ -117,3 +117,37 @@ test("CORS preflight is answered for the game page on another origin", async () 
   assert.equal(res.status, 204);
   assert.equal(res.headers.get("access-control-allow-origin"), "*");
 });
+
+test("the Redis store grants a purchase exactly once, even when claims race", async () => {
+  const { RedisStore } = await import("../server/store");
+  const sets = new Map<string, Set<string>>();
+  const fake = {
+    sadd: async (key: string, member: string) => {
+      const set = sets.get(key) ?? new Set<string>();
+      sets.set(key, set);
+      const before = set.size;
+      set.add(member);
+      return set.size - before;
+    },
+    srem: async (key: string, member: string) => (sets.get(key)?.delete(member) ? 1 : 0),
+    smembers: async (key: string) => [...(sets.get(key) ?? [])],
+  };
+  const redis = new RedisStore(fake);
+
+  const results = await Promise.all([
+    redis.grant("t_zed", "gold_kit", "pur_1"),
+    redis.grant("t_zed", "gold_kit", "pur_1"),
+    redis.grant("t_zed", "gold_kit", "pur_1"),
+  ]);
+  assert.equal(results.filter(Boolean).length, 1, "only one caller is told it was granted");
+  assert.deepEqual(await redis.items("t_zed"), ["gold_kit"]);
+  assert.deepEqual(await redis.items("t_nobody"), []);
+
+  // If saving the item fails, the purchase can be granted again on retry.
+  const flaky = new RedisStore({ ...fake, sadd: async (key, member) => {
+    if (key.startsWith("foosball:owned:")) throw new Error("redis down");
+    return fake.sadd(key, member);
+  } });
+  await assert.rejects(flaky.grant("t_zed", "other", "pur_2"));
+  assert.equal(await redis.grant("t_zed", "other", "pur_2"), true);
+});

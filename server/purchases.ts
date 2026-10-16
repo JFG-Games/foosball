@@ -30,7 +30,7 @@ export async function fulfil(purchaseId: string, expectedPlayerId?: string): Pro
   }
   if (purchase.status === "refunded") throw new PurchaseError(409, "That purchase was refunded");
 
-  if (store.grant(purchase.playerId, purchase.productId, purchase.id)) {
+  if (await store.grant(purchase.playerId, purchase.productId, purchase.id)) {
     console.log(`[purchase] granted ${purchase.productId} to ${purchase.playerId} (${purchase.id})`);
   }
   await deliverPurchase(purchase.id);
@@ -43,7 +43,7 @@ export async function claim(session: string, purchaseId: string): Promise<{ prod
     throw new PurchaseError(401, "Session not valid");
   });
   const purchase = await fulfil(purchaseId, me.playerId);
-  return { productId: purchase.productId, items: store.items(me.playerId) };
+  return { productId: purchase.productId, items: await store.items(me.playerId) };
 }
 
 /** Everything a verified player owns. */

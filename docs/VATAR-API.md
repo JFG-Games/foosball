@@ -43,7 +43,7 @@ from a client-reported purchase.
 
 **Wired in:** one product, `gold_kit` (create it in the dashboard with that exact id; it is a
 one-off). The browser calls `Vatar.purchase`, then `POST /claim` on the game server, which
-verifies the session and the purchase, grants the item once (`server/store.ts`) and marks it
+verifies the session and the purchase, grants the item once (`server/store.ts`: Redis via `REDIS_URL`, or a JSON file for local dev) and marks it
 delivered. `POST /entitlements` returns what a player owns, `Vatar.purchases()` restores
 interrupted purchases, and `POST /vatar-webhook` (signed `sha256=` HMAC) does the same from
 Vatar's `purchase.paid` nudge. Code: `server/http.ts`, `server/purchases.ts`.
