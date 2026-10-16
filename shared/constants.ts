@@ -24,6 +24,9 @@ export const ROOM_CODE_LENGTH = 5;
 /** Pre-kickoff countdown once both players are seated (ms). */
 export const COUNTDOWN_MS = 3000;
 
+/** Time a match lasts before it ends, todo extra time if a draw **/
+export const MATCH_TIME = 3000*60;
+
 /** The two competing sides. `left` defends the -x goal; `right` defends +x. */
 export type Team = "left" | "right";
 
