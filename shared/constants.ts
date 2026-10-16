@@ -13,7 +13,7 @@ export const SNAPSHOT_HZ = 20;
 export const MAX_INPUTS_PER_SEC = 60;
 
 /** First team to this many goals wins. */
-export const MATCH_SCORE_TO_WIN = 5;
+export const MATCH_SCORE_TO_WIN = 3;
 
 /** Pause after a goal, before the next ball is served (ms). */
 export const GOAL_PAUSE_MS = 2600;
