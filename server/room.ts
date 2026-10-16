@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { WebSocket } from "ws";
+import { Bot, type Difficulty } from "@shared/bot";
 import { COUNTDOWN_MS, MAX_INPUTS_PER_SEC, SIM_HZ, SNAPSHOT_HZ, TEAM_RODS, type Team } from "@shared/constants";
 import { MatchCore, type MatchEvent } from "@shared/match";
 import type { ServerMessage } from "@shared/protocol";
@@ -9,7 +10,10 @@ import { getMatch, submitMatchResult } from "./vatar/client";
 
 interface Seat {
   player: Player;
-  socket: WebSocket;
+  /** Null for a bot seat: nobody is connected, the server plays it. */
+  socket: WebSocket | null;
+  /** The computer player in this seat (the Vatar sandbox test bot), if any. */
+  bot: Bot | null;
   /** The Vatar platform match this player says they are in, if any. */
   vatarMatchId?: string;
   /** Secret that lets the same player reclaim this seat on a new socket. */
@@ -87,7 +91,7 @@ export class Room {
 
     player.team = team;
     const token = randomBytes(16).toString("hex");
-    this.seats[team] = { player, socket, vatarMatchId, token, away: false, graceTimer: null };
+    this.seats[team] = { player, socket, bot: null, vatarMatchId, token, away: false, graceTimer: null };
 
     this.send(socket, { t: "welcome", player, roomCode: this.code, tickRate: SIM_HZ, resumeToken: token });
 
@@ -98,6 +102,35 @@ export class Room {
       this.awaitReady();
     }
 
+    return team;
+  }
+
+  /**
+   * Seat a computer player. Used in the Vatar sandbox, where the platform's
+   * "test bot" takes the other seat of a match but never connects: the server
+   * plays that seat so the match is real and its result can be posted.
+   */
+  seatBot(player: Player, difficulty: Difficulty, vatarMatchId?: string): Team | null {
+    const team: Team | null = this.seats.left === null ? "left" : this.seats.right === null ? "right" : null;
+    if (team === null) return null;
+
+    player.team = team;
+    this.seats[team] = {
+      player,
+      socket: null,
+      bot: new Bot(team, difficulty, (Date.now() & 0xffff) + 1),
+      vatarMatchId,
+      token: "",
+      away: false,
+      graceTimer: null,
+    };
+    this.ready[team] = true; // a bot never needs a tutorial
+
+    const other = this.seats[team === "left" ? "right" : "left"];
+    if (other) {
+      this.send(other.socket, { t: "peer", event: "join", player });
+      this.awaitReady();
+    }
     return team;
   }
 
@@ -171,6 +204,7 @@ export class Room {
     const other: Team = team === "left" ? "right" : "left";
     const otherSeat = this.seats[other];
     if (otherSeat) this.send(otherSeat.socket, { t: "rematch", from: team });
+    if (otherSeat?.bot) this.rematchVotes.add(other);
 
     if (this.rematchVotes.size === 2) {
       this.rematchVotes.clear();
@@ -203,7 +237,7 @@ export class Room {
 
     seat.away = true;
     if (seat.graceTimer) clearTimeout(seat.graceTimer);
-    seat.graceTimer = setTimeout(() => this.abandon(seat.socket), graceMs());
+    seat.graceTimer = setTimeout(() => seat.socket && this.abandon(seat.socket), graceMs());
 
     const other = this.seats[team === "left" ? "right" : "left"];
     if (other) this.send(other.socket, { t: "away", away: true, graceMs: graceMs() });
@@ -320,6 +354,11 @@ export class Room {
   private tick(): void {
     const inputs: PlayerInput[] = [];
     for (const team of TEAMS) {
+      const bot = this.seats[team]?.bot;
+      if (bot) {
+        inputs.push(bot.think(this.core.state, TICK_MS));
+        continue;
+      }
       const batch = this.queued[team];
       if (batch.length === 0) continue;
       inputs.push(this.collapse(team, batch));
@@ -433,7 +472,7 @@ export class Room {
     }
   }
 
-  private send(socket: WebSocket, message: ServerMessage): void {
-    if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
+  private send(socket: WebSocket | null, message: ServerMessage): void {
+    if (socket && socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
   }
 }

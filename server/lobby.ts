@@ -2,16 +2,21 @@ import type { WebSocket } from "ws";
 import { PROTOCOL_VERSION, type ClientMessage, type ServerMessage } from "@shared/protocol";
 import type { Player } from "@shared/types";
 import { ROOM_CODE_LENGTH } from "@shared/constants";
-import { VATAR_LIVE } from "./config";
+import { VATAR_LIVE, VATAR_SANDBOX } from "./config";
 import { Room } from "./room";
-import { verifySession } from "./vatar/client";
+import { getMatch, verifySession } from "./vatar/client";
 
 /** A player waiting for an opponent in the quick-match queue. */
 interface Waiting {
   player: Player;
   socket: WebSocket;
   vatarMatchId?: string;
+  /** Sandbox only: fires if nobody joins this platform match, to check for the test bot. */
+  botTimer?: ReturnType<typeof setTimeout>;
 }
+
+/** How long a sandbox player waits for the other player of their Vatar match before checking for the test bot. */
+const testBotWaitMs = (): number => Number(process.env.TEST_BOT_WAIT_MS) || 5000;
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no look-alikes
 
@@ -66,6 +71,7 @@ export class Lobby {
     this.joining.delete(socket);
     const queued = this.waiting.findIndex((w) => w.socket === socket);
     if (queued !== -1) {
+      clearTimeout(this.waiting[queued].botTimer);
       this.waiting.splice(queued, 1);
       return;
     }
@@ -160,17 +166,50 @@ export class Lobby {
     // Pair with someone already waiting (same platform match if one is named).
     const at = this.waiting.findIndex((w) => w.vatarMatchId === vatarMatchId);
     if (at === -1) {
-      this.waiting.push({ player, socket, vatarMatchId });
+      const entry: Waiting = { player, socket, vatarMatchId };
+      // Sandbox: the platform's test bot fills the other seat but never connects, so check for it.
+      if (VATAR_SANDBOX && vatarMatchId) {
+        entry.botTimer = setTimeout(() => void this.seatTestBot(entry), testBotWaitMs());
+      }
+      this.waiting.push(entry);
       this.send(socket, { t: "waiting", message: "Waiting for an opponent…" });
       return;
     }
     const [opponent] = this.waiting.splice(at, 1);
+    clearTimeout(opponent.botTimer);
 
     const room = this.newRoom();
     this.membership.set(opponent.socket, room);
     this.membership.set(socket, room);
     room.seat(opponent.player, opponent.socket, opponent.vatarMatchId);
     room.seat(player, socket, vatarMatchId);
+  }
+
+  /**
+   * Sandbox only. If this player's Vatar match is under way with a second
+   * player who has not connected, that player is the sandbox test bot: play
+   * its seat on the server, so the match is real and the result can be posted.
+   */
+  private async seatTestBot(entry: Waiting): Promise<void> {
+    const waitingNow = this.waiting.indexOf(entry);
+    if (waitingNow === -1 || !entry.vatarMatchId) return;
+    try {
+      const match = await getMatch(entry.vatarMatchId);
+      const other = match.players.find((p) => p.playerId !== entry.player.id);
+      // Re-check: the socket may have left, or a real opponent paired up, while Vatar answered.
+      const stillWaiting = this.waiting.indexOf(entry);
+      if (stillWaiting === -1 || entry.socket.readyState !== entry.socket.OPEN) return;
+      if (match.status !== "playing" || !other) return;
+
+      this.waiting.splice(stillWaiting, 1);
+      const room = this.newRoom();
+      this.membership.set(entry.socket, room);
+      room.seat(entry.player, entry.socket, entry.vatarMatchId);
+      room.seatBot({ id: other.playerId, displayName: other.name || "Test Bot", team: "right" }, "pro", entry.vatarMatchId);
+      console.log(`[lobby] seated the test bot (${other.playerId}) in Vatar match ${match.id}`);
+    } catch (error) {
+      console.warn("[lobby] could not check for the test bot:", error instanceof Error ? error.message : error);
+    }
   }
 
   private newRoom(): Room {
