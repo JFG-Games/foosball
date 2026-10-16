@@ -24,6 +24,8 @@ export type SessionEvent =
   | { t: "serve" }
   | { t: "end"; winner: Team | "draw"; score: Record<Team, number>; stats: MatchStats; forfeit?: boolean }
   | { t: "rematch" }
+  /** Connection trouble: ours dropped / came back, or the opponent's did. */
+  | { t: "link"; state: "reconnecting" | "restored" | "opponent_away" | "opponent_back" }
   | { t: "error"; code: string; message: string }
   | { t: "closed" };
 
@@ -178,6 +180,9 @@ function botName(d: Difficulty): string {
 const EVENT_DELAY_MS = 55;
 /** How often our rods are sent to the server. */
 const SEND_INTERVAL_MS = 1000 / 30;
+/** How long we keep trying to get back into a match after the connection drops. */
+const RECONNECT_WINDOW_MS = 18_000;
+const RECONNECT_RETRY_MS = 1000;
 
 export interface JoinOptions {
   url: string;
@@ -186,6 +191,8 @@ export interface JoinOptions {
   roomCode?: string;
   create?: boolean;
   vatarMatchId?: string;
+  /** Fetch a fresh Vatar session token for a reconnect (tokens expire). */
+  refreshToken?: () => Promise<string>;
 }
 
 export class OnlineSession implements Session {
@@ -196,7 +203,7 @@ export class OnlineSession implements Session {
   paused = false;
   onEvent: (event: SessionEvent) => void = () => {};
 
-  private readonly connection: Connection;
+  private connection: Connection;
   private readonly buffer = new SnapshotBuffer();
   private readonly due: { at: number; event: SessionEvent }[] = [];
   private rods: Record<number, RodState> = {};
@@ -206,25 +213,77 @@ export class OnlineSession implements Session {
   private opponentName = "Opponent";
   private closed = false;
   private started = false;
+  /** The server has told us the match is over: a dropped socket is then normal. */
+  private finished = false;
+  /** Secret from `welcome` that lets us reclaim our seat. */
+  private resumeToken: string | undefined;
+  private reconnecting = false;
+  private reconnectDeadline = 0;
+  private retryTimer: number | null = null;
 
   constructor(private readonly options: JoinOptions) {
     this.myName = options.name;
-    this.connection = createConnection(options.url, () => {
-      const join: ClientMessage = {
-        t: "join",
-        sessionToken: options.sessionToken,
-        roomCode: options.roomCode,
-        create: options.create,
-        vatarMatchId: options.vatarMatchId,
-        protocol: PROTOCOL_VERSION,
-        name: options.name,
-      };
-      return join;
+    this.connection = this.connect(() => ({
+      t: "join",
+      sessionToken: options.sessionToken,
+      roomCode: options.roomCode,
+      create: options.create,
+      vatarMatchId: options.vatarMatchId,
+      protocol: PROTOCOL_VERSION,
+      name: options.name,
+    }));
+  }
+
+  private connect(makeJoin: () => ClientMessage): Connection {
+    const connection = createConnection(this.options.url, makeJoin);
+    connection.onMessage((m) => {
+      if (connection === this.connection) this.receive(m);
     });
-    this.connection.onMessage((m) => this.receive(m));
-    this.connection.onClose(() => {
-      if (!this.closed) this.onEvent({ t: "closed" });
+    connection.onClose(() => {
+      if (connection === this.connection) this.lost();
     });
+    return connection;
+  }
+
+  /** The socket closed. Mid-match, try to get our seat back before giving up. */
+  private lost(): void {
+    if (this.closed) return;
+    const canResume = this.started && !this.finished && this.resumeToken !== undefined && this.roomCode !== undefined;
+    if (!canResume) {
+      this.onEvent({ t: "closed" });
+      return;
+    }
+    if (!this.reconnecting) {
+      this.reconnecting = true;
+      this.reconnectDeadline = performance.now() + RECONNECT_WINDOW_MS;
+      this.onEvent({ t: "link", state: "reconnecting" });
+    }
+    if (performance.now() >= this.reconnectDeadline) {
+      this.reconnecting = false;
+      this.onEvent({ t: "closed" });
+      return;
+    }
+    this.retryTimer = window.setTimeout(() => void this.retry(), RECONNECT_RETRY_MS);
+  }
+
+  private async retry(): Promise<void> {
+    this.retryTimer = null;
+    if (this.closed) return;
+    let token = this.options.sessionToken;
+    try {
+      if (this.options.refreshToken) token = await this.options.refreshToken();
+    } catch {
+      /* fall back to the old token; the server may still accept it */
+    }
+    if (this.closed) return;
+    this.connection = this.connect(() => ({
+      t: "join",
+      sessionToken: token,
+      roomCode: this.roomCode,
+      resume: this.resumeToken,
+      protocol: PROTOCOL_VERSION,
+      name: this.options.name,
+    }));
   }
 
   setRods(rods: Record<number, RodState>): void {
@@ -261,6 +320,7 @@ export class OnlineSession implements Session {
 
   dispose(): void {
     this.closed = true;
+    if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
     this.connection.send({ t: "leave" });
     this.connection.close();
     this.onEvent = () => {};
@@ -281,6 +341,7 @@ export class OnlineSession implements Session {
         this.team = message.player.team;
         this.myName = message.player.displayName;
         this.roomCode = message.roomCode;
+        this.resumeToken = message.resumeToken ?? this.resumeToken;
         this.rods = Object.fromEntries(TEAM_RODS[this.team].map((i) => [i, { angle: 0, offset: 0 }]));
         break;
 
@@ -324,7 +385,21 @@ export class OnlineSession implements Session {
         this.later({ t: "serve" });
         break;
 
+      case "resume":
+        // Back in our seat: take the live state and carry on.
+        this.reconnecting = false;
+        this.buffer.reset();
+        this.buffer.push(message.snapshot);
+        this.due.length = 0;
+        this.onEvent({ t: "link", state: "restored" });
+        break;
+
+      case "away":
+        this.onEvent({ t: "link", state: message.away ? "opponent_away" : "opponent_back" });
+        break;
+
       case "end":
+        this.finished = true;
         // Let the last goal's celebration play out first.
         this.later({ t: "end", winner: message.winner, score: message.score, stats: message.stats, forfeit: message.forfeit });
         break;
@@ -334,6 +409,9 @@ export class OnlineSession implements Session {
         break;
 
       case "error":
+        // A refused reconnect means the match is gone: stop retrying.
+        this.reconnecting = false;
+        this.finished = true;
         this.onEvent({ t: "error", code: message.code, message: message.message });
         break;
     }

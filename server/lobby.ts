@@ -56,20 +56,24 @@ export class Lobby {
         this.membership.get(socket)?.markReady(socket);
         break;
       case "leave":
-        this.disconnect(socket);
+        this.disconnect(socket, true);
         break;
     }
   }
 
-  disconnect(socket: WebSocket): void {
+  /** `deliberate`: the player chose to leave, so do not hold their seat for a reconnect. */
+  disconnect(socket: WebSocket, deliberate = false): void {
     this.joining.delete(socket);
     const queued = this.waiting.findIndex((w) => w.socket === socket);
     if (queued !== -1) {
       this.waiting.splice(queued, 1);
       return;
     }
-    this.membership.get(socket)?.abandon(socket);
+    const room = this.membership.get(socket);
     this.membership.delete(socket);
+    if (!room) return;
+    if (!deliberate && room.drop(socket)) return;
+    room.abandon(socket);
   }
 
   /**
@@ -103,13 +107,28 @@ export class Lobby {
 
     const vatarMatchId = typeof msg.vatarMatchId === "string" ? msg.vatarMatchId.slice(0, 64) : undefined;
 
-    if (msg.create) {
+    if (typeof msg.resume === "string" && typeof msg.roomCode === "string") {
+      this.resumeRoom(socket, msg.roomCode.trim().toUpperCase(), msg.resume);
+    } else if (msg.create) {
       this.openPrivateRoom(socket, player, vatarMatchId);
     } else if (typeof msg.roomCode === "string" && msg.roomCode.trim()) {
       this.joinPrivateRoom(socket, player, msg.roomCode.trim().toUpperCase(), vatarMatchId);
     } else {
       this.quickMatch(socket, player, vatarMatchId);
     }
+  }
+
+  /** Put a returning player back in the seat they dropped out of. */
+  private resumeRoom(socket: WebSocket, code: string, token: string): void {
+    const room = this.rooms.get(code);
+    const previous = room?.resume(socket, token) ?? null;
+    if (!room || !previous) {
+      this.send(socket, { t: "error", code: "resume_failed", message: "That match has ended." });
+      return;
+    }
+    this.membership.delete(previous);
+    this.membership.set(socket, room);
+    if (previous !== socket && previous.readyState === previous.OPEN) previous.close();
   }
 
   private openPrivateRoom(socket: WebSocket, player: Player, vatarMatchId?: string): void {

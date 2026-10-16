@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { WebSocket } from "ws";
 import { COUNTDOWN_MS, MAX_INPUTS_PER_SEC, SIM_HZ, SNAPSHOT_HZ, TEAM_RODS, type Team } from "@shared/constants";
 import { MatchCore, type MatchEvent } from "@shared/match";
@@ -11,6 +12,11 @@ interface Seat {
   socket: WebSocket;
   /** The Vatar platform match this player says they are in, if any. */
   vatarMatchId?: string;
+  /** Secret that lets the same player reclaim this seat on a new socket. */
+  token: string;
+  /** Connection dropped mid-match; the seat is held until `graceTimer` fires. */
+  away: boolean;
+  graceTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const TEAMS: readonly Team[] = ["left", "right"];
@@ -24,6 +30,11 @@ const MAX_CATCHUP_TICKS = 6;
 
 /** Once paired, how long we wait for both players to be ready (e.g. finishing the tutorial). */
 const READY_WINDOW_MS = 120_000;
+
+/** How long a dropped player's seat is held (play is paused meanwhile). */
+const DEFAULT_GRACE_MS = 20_000;
+/** Read at call time so tests can shorten it with RECONNECT_GRACE_MS. */
+const graceMs = (): number => Number(process.env.RECONNECT_GRACE_MS) || DEFAULT_GRACE_MS;
 
 /** A finished room waits this long for a rematch before it is torn down. */
 const REMATCH_WINDOW_MS = 60_000;
@@ -75,9 +86,10 @@ export class Room {
     if (team === null) return null;
 
     player.team = team;
-    this.seats[team] = { player, socket, vatarMatchId };
+    const token = randomBytes(16).toString("hex");
+    this.seats[team] = { player, socket, vatarMatchId, token, away: false, graceTimer: null };
 
-    this.send(socket, { t: "welcome", player, roomCode: this.code, tickRate: SIM_HZ });
+    this.send(socket, { t: "welcome", player, roomCode: this.code, tickRate: SIM_HZ, resumeToken: token });
 
     const other = this.seats[team === "left" ? "right" : "left"];
     if (other) {
@@ -173,12 +185,68 @@ export class Room {
     }
   }
 
+  /** A match is under way (so a dropped player can still come back to it). */
+  get live(): boolean {
+    return this.started && !this.closed && this.core.phase !== "over";
+  }
+
+  /**
+   * A player's socket closed. Mid-match we hold their seat for a while and
+   * pause play instead of forfeiting. Returns false when there is nothing to
+   * hold (not started / already over), so the caller should `abandon` instead.
+   */
+  drop(socket: WebSocket): boolean {
+    const team = this.teamOf(socket);
+    if (team === null) return false;
+    const seat = this.seats[team];
+    if (!seat || !this.live) return false;
+
+    seat.away = true;
+    if (seat.graceTimer) clearTimeout(seat.graceTimer);
+    seat.graceTimer = setTimeout(() => this.abandon(seat.socket), graceMs());
+
+    const other = this.seats[team === "left" ? "right" : "left"];
+    if (other) this.send(other.socket, { t: "away", away: true, graceMs: graceMs() });
+    return true;
+  }
+
+  /**
+   * Hand a held seat to a new socket if `token` matches. Returns the socket it
+   * replaces (so the lobby can forget it), or null when the token is wrong.
+   */
+  resume(socket: WebSocket, token: string): WebSocket | null {
+    if (this.closed) return null;
+    for (const team of TEAMS) {
+      const seat = this.seats[team];
+      if (!seat || seat.token !== token) continue;
+
+      const previous = seat.socket;
+      if (seat.graceTimer) clearTimeout(seat.graceTimer);
+      seat.graceTimer = null;
+      seat.away = false;
+      seat.socket = socket;
+
+      this.send(socket, { t: "welcome", player: seat.player, roomCode: this.code, tickRate: SIM_HZ, resumeToken: seat.token });
+      const other = this.seats[team === "left" ? "right" : "left"];
+      if (other) {
+        this.send(socket, { t: "peer", event: "join", player: other.player });
+        this.send(socket, { t: "opponent", ready: true });
+        this.send(other.socket, { t: "away", away: false });
+      }
+      this.send(socket, { t: "resume", snapshot: this.core.state });
+      this.lastTickAt = performance.now();
+      return previous;
+    }
+    return null;
+  }
+
   /** A player dropped: tell the other side, end the match and close the room. */
   abandon(socket: WebSocket): void {
     const team = this.teamOf(socket);
     if (team === null) return;
     const gone = this.seats[team];
     this.seats[team] = null;
+    if (gone?.graceTimer) clearTimeout(gone.graceTimer);
 
     const otherTeam: Team = team === "left" ? "right" : "left";
     const other = this.seats[otherTeam];
@@ -203,6 +271,10 @@ export class Room {
   }
 
   stop(): void {
+    for (const team of TEAMS) {
+      const timer = this.seats[team]?.graceTimer;
+      if (timer) clearTimeout(timer);
+    }
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
     if (this.idleTimer !== null) clearTimeout(this.idleTimer);
@@ -226,6 +298,11 @@ export class Room {
   /** Run as many fixed ticks as real time demands, then return. */
   private pump(): void {
     const now = performance.now();
+    // Someone is reconnecting: hold the match still rather than let them concede goals.
+    if (TEAMS.some((team) => this.seats[team]?.away)) {
+      this.lastTickAt = now;
+      return;
+    }
     this.accumulatorMs += now - this.lastTickAt;
     this.lastTickAt = now;
 

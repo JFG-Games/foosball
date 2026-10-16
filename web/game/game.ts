@@ -262,6 +262,7 @@ export class Game {
       roomCode: opts.roomCode,
       create: opts.create,
       vatarMatchId,
+      refreshToken: freshSession,
     });
     this.attach(session);
 
@@ -354,6 +355,10 @@ export class Game {
         });
         break;
 
+      case "link":
+        this.onLink(e.state);
+        break;
+
       case "closed":
         if (this.phase !== "over" && !this.ending) {
           this.teardownMatch();
@@ -362,6 +367,33 @@ export class Game {
             solo: () => this.startSolo(settings.difficulty),
           });
         }
+        break;
+    }
+  }
+
+  private matchStatus(session: Session): string {
+    const side = this.myTeam === "left" ? "BLUE" : "RED";
+    return `YOU ARE ${side} · VS ${session.names[other(this.myTeam)].toUpperCase()}`;
+  }
+
+  /** Connection trouble, ours or theirs. The server pauses play while someone reconnects. */
+  private onLink(state: "reconnecting" | "restored" | "opponent_away" | "opponent_back"): void {
+    const session = this.session;
+    if (!session) return;
+    switch (state) {
+      case "reconnecting":
+        this.hud.setStatus("CONNECTION LOST · RECONNECTING…");
+        break;
+      case "opponent_away":
+        this.hud.setStatus("OPPONENT RECONNECTING… PLAY IS PAUSED");
+        break;
+      case "restored":
+        this.hud.setStatus(this.matchStatus(session));
+        this.hud.toast("Back in the game!");
+        break;
+      case "opponent_back":
+        this.hud.setStatus(this.matchStatus(session));
+        this.hud.toast("Opponent is back");
         break;
     }
   }
@@ -395,8 +427,7 @@ export class Game {
 
     this.hud.setNames(names, this.myTeam);
     this.hud.show(true);
-    const side = this.myTeam === "left" ? "BLUE" : "RED";
-    this.hud.setStatus(`YOU ARE ${side} · VS ${session.names[other(this.myTeam)].toUpperCase()}`);
+    this.hud.setStatus(this.matchStatus(session));
     this.table?.setOwnTeam(this.myTeam);
     void this.acquireWakeLock();
   }

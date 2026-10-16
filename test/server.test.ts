@@ -159,10 +159,75 @@ test("leaving mid-match awards the win to the one who stays", async () => {
     await Promise.all([a.next("welcome"), b.next("welcome")]);
     a.send({ t: "ready" }); b.send({ t: "ready" });
     await Promise.all([a.next("start"), b.next("start")]);
-    b.close();
+    b.send({ t: "leave" });
     const end = await a.next("end");
     assert.equal(end.winner, "left");
     assert.equal(end.forfeit, true);
     a.close();
   } finally { await server.close(); }
+});
+
+/** Seat two players in a started match; returns their clients and B's resume details. */
+async function startedMatch(url: string) {
+  const a = await client(url);
+  const b = await client(url);
+  a.send(join()); await a.next("waiting");
+  b.send(join());
+  const [, wb] = await Promise.all([a.next("welcome"), b.next("welcome")]);
+  a.send({ t: "ready" }); b.send({ t: "ready" });
+  await Promise.all([a.next("start"), b.next("start")]);
+  assert.ok(wb.resumeToken, "the welcome carries a resume token");
+  return { a, b, roomCode: wb.roomCode, token: wb.resumeToken! };
+}
+
+test("a dropped player can reclaim their seat mid-match", async () => {
+  const server = await boot();
+  try {
+    const { a, b, roomCode, token } = await startedMatch(server.url);
+    b.close(); // the connection dies; no "leave"
+    const away = await a.next("away");
+    assert.equal(away.away, true);
+    assert.equal(a.log.some((m) => m.t === "end"), false, "no forfeit while the seat is held");
+
+    // Play is held still while B is away.
+    const before = a.log.filter((m) => m.t === "snapshot").length;
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(a.log.filter((m) => m.t === "snapshot").length, before, "paused");
+
+    const b2 = await client(server.url);
+    b2.send(join({ roomCode, resume: token }));
+    const welcome = await b2.next("welcome");
+    assert.equal(welcome.player.team, "right", "same side as before");
+    await b2.next("resume");
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(a.log.some((m) => m.t === "away" && !m.away), "A hears that B is back");
+    assert.ok(a.log.filter((m) => m.t === "snapshot").length > before, "play resumes");
+    a.close(); b2.close();
+  } finally { await server.close(); }
+});
+
+test("a wrong resume token is refused", async () => {
+  const server = await boot();
+  try {
+    const { a, b, roomCode } = await startedMatch(server.url);
+    b.close();
+    await a.next("away");
+    const intruder = await client(server.url);
+    intruder.send(join({ roomCode, resume: "not-the-token" }));
+    assert.equal((await intruder.next("error")).code, "resume_failed");
+    a.close(); intruder.close();
+  } finally { await server.close(); }
+});
+
+test("a seat that is not reclaimed in time forfeits the match", async () => {
+  process.env.RECONNECT_GRACE_MS = "200";
+  const server = await boot();
+  try {
+    const { a, b } = await startedMatch(server.url);
+    b.close();
+    const end = await a.next("end");
+    assert.equal(end.winner, "left");
+    assert.equal(end.forfeit, true);
+    a.close();
+  } finally { delete process.env.RECONNECT_GRACE_MS; await server.close(); }
 });

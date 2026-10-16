@@ -15,6 +15,8 @@ export type ClientMessage =
       create?: boolean;
       /** A Vatar platform match this game belongs to (results are reported to it). */
       vatarMatchId?: string;
+      /** Rejoin a match you dropped out of: the `resumeToken` from your `welcome` (with `roomCode`). */
+      resume?: string;
       protocol?: number;
       /** Display name for local development only; ignored once Vatar verifies the session. */
       name?: string;
@@ -28,7 +30,12 @@ export type ClientMessage =
 /** Messages sent from the server to the browser client. */
 export type ServerMessage =
   | { t: "waiting"; message: string; roomCode?: string }
-  | { t: "welcome"; player: Player; roomCode: string; tickRate: number }
+  /** `resumeToken` lets this player reclaim the seat after a dropped connection. */
+  | { t: "welcome"; player: Player; roomCode: string; tickRate: number; resumeToken?: string }
+  /** The opponent's connection dropped (play is paused) or came back. */
+  | { t: "away"; away: boolean; graceMs?: number }
+  /** You reconnected: here is the live state. */
+  | { t: "resume"; snapshot: Snapshot }
   | { t: "peer"; event: "join" | "leave"; player: Player }
   /** Whether the other player is ready yet (false while they're in the tutorial, say). */
   | { t: "opponent"; ready: boolean }

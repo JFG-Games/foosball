@@ -43,7 +43,7 @@ demoable before moving on.
 - [x] Server-side input validation: only your own four rods, rate-limited
 - [x] Interpolation of remote state; opponent leaving ends the match
 - [x] Goal + match-end flow (`MATCH_SCORE_TO_WIN`), with re-serve after a goal
-- [ ] Reconnect: rejoin an in-progress match after a dropped socket
+- [x] Reconnect: rejoin an in-progress match after a dropped socket (seat held 20 s, play paused)
 
 ## M5 — Vatar integration
 
@@ -66,8 +66,8 @@ demoable before moving on.
 - [x] Single player vs bot (rookie / pro / legend)
 - [x] Private rooms with code / invite link; rematch
 - [x] First-time tutorial; the opponent is held while it runs
-- [ ] Reconnect: rejoin an in-progress match after a dropped socket
-- [ ] `frame-ancestors` header, HTTPS hosting, `wss://` server
+- [x] Reconnect: rejoin an in-progress match after a dropped socket (seat held 20 s, play paused)
+- [x] `frame-ancestors` header (`vercel.json`), HTTPS hosting, `wss://` server
 - [ ] Sandbox test pass → submit for review → live keys
 
 ## Open questions
