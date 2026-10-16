@@ -71,6 +71,12 @@ waits for `status: "playing"`, then joins our server with that match id (so the 
 Lagos Life and our server posts its result). Private rooms use our own codes and are not
 platform matches. Stakes are not used.
 
+**Sandbox test bot:** the sandbox page's "Add the test bot to my match" button seats a bot that
+never connects. In sandbox mode (`VATAR_SANDBOX=true`), a player whose Vatar match has no second
+connection after 5 s is checked with `GET /matches/{id}`; if the match is playing with another
+player, the server plays that seat with its own bot (`Room.seatBot`) and posts the result for the
+human. Disabled when `VATAR_SANDBOX=false`.
+
 ## Setup flow
 
 1. Sign in to the developer portal and create a **draft** game.
