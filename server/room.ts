@@ -234,6 +234,7 @@ export class Room {
         this.send(other.socket, { t: "away", away: false });
       }
       this.send(socket, { t: "resume", snapshot: this.core.state });
+      if (this.core.extraTime) this.send(socket, { t: "extra", ms: this.core.timeLeftMs });
       this.lastTickAt = performance.now();
       return previous;
     }
@@ -355,6 +356,9 @@ export class Room {
       case "serve":
         this.broadcast({ t: "serve" });
         return true;
+      case "extra":
+        this.broadcast({ t: "extra", ms: event.ms });
+        return false;
       case "end":
         this.broadcast({ t: "end", winner: event.winner, score: event.score, stats: event.stats, byTime: event.byTime });
         void this.reportResult(event.winner);

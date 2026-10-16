@@ -2,7 +2,8 @@ import {
   COUNTDOWN_MS,
   GOAL_PAUSE_MS,
   MATCH_SCORE_TO_WIN,
-  MATCH_TIME_LIMIT_MS,
+  MATCH_EXTRA_TIME,
+  MATCH_TIME,
   RODS,
   SIM_HZ,
   type Team,
@@ -27,6 +28,8 @@ export type MatchEvent =
   | { t: "hits"; hits: HitEvent[] }
   | { t: "goal"; team: Team; score: Record<Team, number>; ball: Vec3; vel: Vec3; pauseMs: number }
   | { t: "serve" }
+  /** Regulation time ended level: sudden-death extra time begins. */
+  | { t: "extra"; ms: number }
   | { t: "end"; winner: Team | "draw"; score: Record<Team, number>; stats: MatchStats; byTime?: boolean };
 
 const TICK_MS = 1000 / SIM_HZ;
@@ -48,14 +51,43 @@ export class MatchCore {
     playMs: 0,
   };
 
+  private inExtra = false;
+
   constructor(
     private readonly scoreToWin = MATCH_SCORE_TO_WIN,
-    private readonly timeLimitMs = MATCH_TIME_LIMIT_MS,
+    private readonly timeLimitMs = MATCH_TIME,
+    private readonly extraTimeMs = MATCH_EXTRA_TIME,
   ) {}
 
-  /** Milliseconds of play left before time runs out. */
+  /** Play time at which the current period ends. */
+  private get limitMs(): number {
+    return this.timeLimitMs + (this.inExtra ? this.extraTimeMs : 0);
+  }
+
+  /** Milliseconds of play left in the current period (regulation, then extra time). */
   get timeLeftMs(): number {
-    return Math.max(0, this.timeLimitMs - this.stats.playMs);
+    return Math.max(0, this.limitMs - this.stats.playMs);
+  }
+
+  /** True once sudden-death extra time has begun. */
+  get extraTime(): boolean {
+    return this.inExtra;
+  }
+
+  /**
+   * The play clock may have run out. Ends the match (returns true), or, if it
+   * is level after regulation, starts extra time and play carries on.
+   */
+  private clockCheck(events: MatchEvent[]): boolean {
+    if (this.stats.playMs < this.limitMs) return false;
+    const leader = this.leader();
+    if (leader === "draw" && !this.inExtra && this.extraTimeMs > 0) {
+      this.inExtra = true;
+      events.push({ t: "extra", ms: this.extraTimeMs });
+      return false;
+    }
+    this.finish(leader, events, true);
+    return true;
   }
 
   /** Who is ahead when time runs out: the higher score, or a draw. */
@@ -109,10 +141,7 @@ export class MatchCore {
       return;
     }
     // A goal at the buzzer: the clock ran out during the celebration, so it decides the match now.
-    if (this.phase === "goal" && this.stats.playMs >= this.timeLimitMs) {
-      this.finish(this.leader(), events, true);
-      return;
-    }
+    if (this.phase === "goal" && this.clockCheck(events)) return;
     this.state = serveBall(this.state, this.conceded);
     this.phase = "play";
     events.push({ t: "serve" });
@@ -143,7 +172,8 @@ export class MatchCore {
       this.conceded = team === "left" ? "right" : "left";
       this.phase = "goal";
       this.phaseLeftMs = GOAL_PAUSE_MS;
-      if (this.state.score[team] >= this.scoreToWin) this.winner = team;
+      // In extra time the next goal wins, whatever the score.
+      if (this.state.score[team] >= this.scoreToWin || this.inExtra) this.winner = team;
 
       events.push({
         t: "goal",
@@ -153,8 +183,8 @@ export class MatchCore {
         vel: result.goal.vel,
         pauseMs: GOAL_PAUSE_MS,
       });
-    } else if (this.stats.playMs >= this.timeLimitMs) {
-      this.finish(this.leader(), events, true);
+    } else {
+      this.clockCheck(events);
     }
   }
 

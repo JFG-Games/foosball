@@ -54,6 +54,8 @@ export type ServerMessage =
       pauseMs: number;
     }
   | { t: "serve" }
+  /** Regulation ended level: sudden-death extra time (`ms` of play) has begun. */
+  | { t: "extra"; ms: number }
   | { t: "end"; winner: Team | "draw"; score: Record<Team, number>; stats: MatchStats; forfeit?: boolean; byTime?: boolean }
   /** The other player wants a rematch. */
   | { t: "rematch"; from: Team }

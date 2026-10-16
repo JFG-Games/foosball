@@ -1,6 +1,6 @@
 import { Vector3 } from "three";
 import type { Difficulty } from "@shared/bot";
-import { MATCH_TIME_LIMIT_MS, RODS, TABLE, type Team } from "@shared/constants";
+import { MATCH_EXTRA_TIME, MATCH_SCORE_TO_WIN, MATCH_TIME, RODS, TABLE, type Team } from "@shared/constants";
 import type { RodState, Vec3 } from "@shared/types";
 import { sfx } from "../audio";
 import { SERVER_URL } from "../config";
@@ -72,6 +72,8 @@ export class Game {
   private firstServe = true;
   private ending = false;
   private playMs = 0;
+  /** Sudden-death extra time is under way. */
+  private inExtra = false;
   private lastFrame = performance.now();
   private lastLiveBall: Vec3 | null = null;
   private lastDrawnBall: Vec3 | null = null;
@@ -396,6 +398,13 @@ export class Game {
         this.firstServe = false;
         break;
 
+      case "extra":
+        this.inExtra = true;
+        this.hud.setLabel("SUDDEN DEATH");
+        this.hud.setStatus("EXTRA TIME · NEXT GOAL WINS");
+        void this.words.pop("EXTRA TIME!", { shock: true, size: 1.1, hold: 1400, color: "#fff", burst: "#ffd23f", y: 0.34 });
+        break;
+
       case "end":
         this.onEnd(e);
         break;
@@ -620,7 +629,9 @@ export class Game {
     this.score = { left: 0, right: 0 };
     this.playMs = 0;
     this.hud.setScore(this.score);
-    this.hud.setTimer(MATCH_TIME_LIMIT_MS);
+    this.inExtra = false;
+    this.hud.setLabel(`FIRST TO ${MATCH_SCORE_TO_WIN}`);
+    this.hud.setTimer(MATCH_TIME);
     this.table?.setScore(this.score);
     this.rig.zoomTo(1);
     this.holdOpen = false;
@@ -859,7 +870,7 @@ export class Game {
     if (this.phase === "play" && !(session?.paused ?? false)) {
       this.playMs += realDt;
       // Solo follows the sim's own clock (it slows in slow-motion); online counts real time.
-      this.hud.setTimer(session instanceof LocalSession ? session.timeLeftMs : Math.max(0, MATCH_TIME_LIMIT_MS - this.playMs));
+      this.hud.setTimer(session instanceof LocalSession ? session.timeLeftMs : Math.max(0, MATCH_TIME + (this.inExtra ? MATCH_EXTRA_TIME : 0) - this.playMs));
     }
     if (view && view.score.left !== this.score.left) this.hud.setScore(view.score);
 

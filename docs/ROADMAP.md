@@ -57,7 +57,7 @@ demoable before moving on.
 - [ ] **Test the above against the sandbox** (signing and match reporting are implemented
       from the docs but not yet exercised with real keys)
 - [x] Purchases stored in Redis (`REDIS_URL`) so they survive deploys
-- [x] Match rules: first to 3 goals, or the higher score after 3 minutes of play; a tie is a draw
+- [x] Match rules: first to 3 goals, or the higher score after 3 minutes of play (`MATCH_TIME`); a tie goes to 1 minute of sudden-death extra time (`MATCH_EXTRA_TIME`), and a draw if still level
 - [x] Shop: three kits, a ball trail and a goal party
 - [x] In-game purchase flow (verify + deliver server-side): `gold_kit`, webhook, restore on load
 - [x] Quick match is paired through `Vatar.match.quick`, so results are posted to a platform match

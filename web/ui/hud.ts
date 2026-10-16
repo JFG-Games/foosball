@@ -34,6 +34,8 @@ export interface Hud {
   setStatus(text: string): void;
   setRod(slot: number, auto: boolean, announce?: boolean): void;
   setSound(on: boolean): void;
+  /** The small line above the clock (the goal target, or "SUDDEN DEATH"). */
+  setLabel(text: string): void;
   /** Play time left in ms; shown as a countdown. */
   setTimer(msLeft: number): void;
 
@@ -187,6 +189,10 @@ export function createHud(root: HTMLElement, handlers: HudHandlers): Hud {
     },
 
     setSound,
+
+    setLabel(text: string): void {
+      q(".vs small").textContent = text;
+    },
 
     /** Show the play time left, counting down. */
     setTimer(msLeft: number): void {

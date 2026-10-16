@@ -16,11 +16,17 @@ export const MAX_INPUTS_PER_SEC = 60;
 export const MATCH_SCORE_TO_WIN = 3;
 
 /**
- * Play time limit (ms). Only time with the ball in play counts, not the
- * countdown or goal celebrations. If nobody has reached MATCH_SCORE_TO_WIN
- * when it runs out, the higher score wins and a tie is a draw.
+ * Time a match lasts before it ends (ms). Only time with the ball in play
+ * counts, not the countdown or goal celebrations. If nobody has reached
+ * MATCH_SCORE_TO_WIN when it runs out, the higher score wins.
  */
-export const MATCH_TIME_LIMIT_MS = 180_000;
+export const MATCH_TIME = 3000 * 60;
+
+/**
+ * Extra time after a tied MATCH_TIME (ms): sudden death, so the next goal
+ * wins. If it is still level when this runs out, the match is a draw.
+ */
+export const MATCH_EXTRA_TIME = 1000 * 60;
 
 /** Pause after a goal, before the next ball is served (ms). */
 export const GOAL_PAUSE_MS = 2600;

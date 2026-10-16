@@ -193,10 +193,11 @@ function parkBall(core: MatchCore): void {
   core.state.ball.pos.z = 0;
 }
 
-test("the default is first to 3 goals within 3 minutes", async () => {
-  const { MATCH_SCORE_TO_WIN, MATCH_TIME_LIMIT_MS } = await import("@shared/constants");
+test("the default is first to 3 goals within 3 minutes, then a minute of extra time", async () => {
+  const { MATCH_SCORE_TO_WIN, MATCH_TIME, MATCH_EXTRA_TIME } = await import("@shared/constants");
   assert.equal(MATCH_SCORE_TO_WIN, 3);
-  assert.equal(MATCH_TIME_LIMIT_MS, 180_000);
+  assert.equal(MATCH_TIME, 180_000);
+  assert.equal(MATCH_EXTRA_TIME, 60_000);
 });
 
 test("when time runs out the higher score wins", () => {
@@ -217,8 +218,8 @@ test("when time runs out the higher score wins", () => {
   assert.fail("time should have run out");
 });
 
-test("a tie when time runs out is a draw", () => {
-  const core = new MatchCore(3, 1000);
+test("a tie with no extra time allowed is a draw", () => {
+  const core = new MatchCore(3, 1000, 0);
   runUntil(core, "play");
   core.state = { ...core.state, score: { left: 2, right: 2 } };
   for (let i = 0; i < 70 && core.phase === "play"; i++) {
@@ -274,4 +275,64 @@ test("a goal at the buzzer still counts, then the clock decides", () => {
   const end = playToEnd(core);
   assert.equal(end.winner, "left");
   assert.equal(end.byTime, true);
+});
+
+/** Run a parked-ball match until `phase`/event, returning every event seen. */
+function drain(core: MatchCore, ticks: number): MatchEvent[] {
+  const events: MatchEvent[] = [];
+  for (let i = 0; i < ticks && core.phase !== "over"; i++) {
+    if (core.phase === "play") parkBall(core);
+    events.push(...core.tick([]));
+  }
+  return events;
+}
+
+test("a tie after regulation goes to sudden-death extra time", () => {
+  const core = new MatchCore(3, 1000, 2000);
+  runUntil(core, "play");
+  core.state = { ...core.state, score: { left: 1, right: 1 } };
+  const events = drain(core, 90); // just past the first second of play
+  const extra = events.find((e) => e.t === "extra");
+  assert.ok(extra && extra.t === "extra", "extra time starts");
+  assert.equal(extra.ms, 2000);
+  assert.equal(core.extraTime, true);
+  assert.equal(core.phase, "play", "play carries on");
+  assert.ok(!events.some((e) => e.t === "end"), "the match is not over");
+  assert.ok(core.timeLeftMs > 1000, "the clock now counts the extra period");
+});
+
+test("the first goal in extra time wins, even from level", () => {
+  const core = new MatchCore(3, 1000, 5000);
+  runUntil(core, "play");
+  core.state = { ...core.state, score: { left: 1, right: 1 } };
+  drain(core, 90);
+  assert.equal(core.extraTime, true);
+  aimAtRightGoal(core);
+  const goal = core.tick([]).find((e) => e.t === "goal");
+  assert.ok(goal && goal.t === "goal");
+  const end = playToEnd(core);
+  assert.equal(end.winner, "left");
+  assert.deepEqual(end.score, { left: 2, right: 1 });
+});
+
+test("still level when extra time runs out is a draw", () => {
+  const core = new MatchCore(3, 500, 500);
+  runUntil(core, "play");
+  const events = drain(core, 200);
+  assert.ok(events.some((e) => e.t === "extra"));
+  const end = events.find((e) => e.t === "end");
+  assert.ok(end && end.t === "end");
+  assert.equal(end.winner, "draw");
+  assert.equal(end.byTime, true);
+});
+
+test("a lead at the end of regulation wins without extra time", () => {
+  const core = new MatchCore(3, 500, 5000);
+  runUntil(core, "play");
+  core.state = { ...core.state, score: { left: 0, right: 1 } };
+  const events = drain(core, 120);
+  assert.ok(!events.some((e) => e.t === "extra"), "no extra time when someone leads");
+  const end = events.find((e) => e.t === "end");
+  assert.ok(end && end.t === "end");
+  assert.equal(end.winner, "right");
 });

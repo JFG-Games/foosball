@@ -22,6 +22,8 @@ export type SessionEvent =
   | { t: "hits"; hits: HitEvent[] }
   | { t: "goal"; team: Team; score: Record<Team, number>; ball: Vec3; vel: Vec3; pauseMs: number }
   | { t: "serve" }
+  /** Sudden-death extra time has begun. */
+  | { t: "extra"; ms: number }
   | { t: "end"; winner: Team | "draw"; score: Record<Team, number>; stats: MatchStats; forfeit?: boolean; byTime?: boolean }
   | { t: "rematch" }
   /** Connection trouble: ours dropped / came back, or the opponent's did. */
@@ -167,6 +169,9 @@ export class LocalSession implements Session {
         break;
       case "serve":
         this.onEvent({ t: "serve" });
+        break;
+      case "extra":
+        this.onEvent({ t: "extra", ms: e.ms });
         break;
       case "end":
         this.onEvent({ t: "end", winner: e.winner, score: e.score, stats: e.stats, byTime: e.byTime });
@@ -388,6 +393,10 @@ export class OnlineSession implements Session {
 
       case "serve":
         this.later({ t: "serve" });
+        break;
+
+      case "extra":
+        this.later({ t: "extra", ms: message.ms });
         break;
 
       case "resume":
