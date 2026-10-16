@@ -30,5 +30,8 @@ export const VATAR_SANDBOX =
  */
 export const VATAR_RESULTS_SECRET = process.env.VATAR_RESULTS_SECRET ?? "";
 
+/** Signing secret for inbound Vatar webhooks. Server-side only. */
+export const VATAR_WEBHOOK_SECRET = process.env.VATAR_WEBHOOK_SECRET ?? "";
+
 /** True when real (or sandbox) Vatar credentials are configured. */
 export const VATAR_LIVE = VATAR_SECRET.length > 0;

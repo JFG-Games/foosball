@@ -144,7 +144,8 @@ export async function submitScore(score: number): Promise<SubmitResult> {
   if (isBest) writeStat("bestScore", score);
   const best = Math.max(previousBest, score);
 
-  if (!sdkReady || !window.Vatar) return { best, isBest, sent: false };
+  // A zero can never beat a best, so don't spend a rate-limited request on it.
+  if (!sdkReady || !window.Vatar || score <= 0) return { best, isBest, sent: false };
 
   const wait = SUBMIT_GAP_MS - (performance.now() - lastSubmit);
   if (wait > 0) {
