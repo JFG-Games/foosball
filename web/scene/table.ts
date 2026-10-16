@@ -365,7 +365,7 @@ export function createTable(assets: TableAssets): TableView {
   }
 
   // ── Scoreboard beads, on the rim ───────────────────────────────────────
-  const beadGeometry = new THREE.SphereGeometry(0.0105, 12, 8);
+  const beadGeometry = new THREE.SphereGeometry(0.0105, 8, 6);
   const beadMaterial = new THREE.MeshLambertMaterial();
   const beads = new THREE.InstancedMesh(beadGeometry, beadMaterial, MATCH_SCORE_TO_WIN * 2);
   beads.frustumCulled = false;
@@ -390,13 +390,13 @@ export function createTable(assets: TableAssets): TableView {
 
   // ── Rods: chrome shaft + team grip ─────────────────────────────────────
   const rodHalf = outerZ + 0.21;
-  const shaftGeometry = new THREE.CylinderGeometry(0.0058, 0.0058, rodHalf * 2, 12).rotateX(Math.PI / 2);
+  const shaftGeometry = new THREE.CylinderGeometry(0.0058, 0.0058, rodHalf * 2, 8).rotateX(Math.PI / 2);
   const shaftMaterial = new THREE.MeshPhongMaterial({ color: COLOR.chrome, shininess: 90, specular: 0x8899aa });
 
-  const gripGeometry = new THREE.CylinderGeometry(0.0125, 0.0125, 0.1, 14).rotateX(Math.PI / 2);
-  const capGeometry = new THREE.CylinderGeometry(0.0145, 0.0145, 0.012, 14).rotateX(Math.PI / 2);
+  const gripGeometry = new THREE.CylinderGeometry(0.0125, 0.0125, 0.1, 10).rotateX(Math.PI / 2);
+  const capGeometry = new THREE.CylinderGeometry(0.0145, 0.0145, 0.012, 10).rotateX(Math.PI / 2);
   const stripeGeometry = new THREE.BoxGeometry(0.004, 0.003, 0.085);
-  const ringGeometry = new THREE.CylinderGeometry(0.0135, 0.0135, 0.008, 14).rotateX(Math.PI / 2);
+  const ringGeometry = new THREE.CylinderGeometry(0.0135, 0.0135, 0.008, 10).rotateX(Math.PI / 2);
   const capMaterial = new THREE.MeshLambertMaterial({ color: 0x0d0f16 });
   const white = new THREE.MeshLambertMaterial({ color: 0xf5f7ff });
 
@@ -494,7 +494,19 @@ export function createTable(assets: TableAssets): TableView {
   const lit = { left: -1, right: -1 };
   const litColor = new THREE.Color();
 
+  const lastAngle = new Float32Array(RODS.length).fill(Number.NaN);
+  const lastOffset = new Float32Array(RODS.length).fill(Number.NaN);
+
   function writeMen(rods: RodState[]): void {
+    let moved = false;
+    for (let r = 0; r < RODS.length; r++) {
+      const st = rods[r];
+      if (!st || (st.angle === lastAngle[r] && st.offset === lastOffset[r])) continue;
+      lastAngle[r] = st.angle;
+      lastOffset[r] = st.offset;
+      moved = true;
+    }
+    if (!moved) return;
     for (let i = 0; i < manSlots.length; i++) {
       const slot = manSlots[i];
       const state = rods[slot.rod];

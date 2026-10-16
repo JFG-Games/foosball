@@ -13,9 +13,9 @@ import * as THREE from "three";
 export type Quality = 0 | 1 | 2 | 3;
 
 const TIERS: { pixelRatio: number; shadowSize: number; label: string }[] = [
-  { pixelRatio: 2, shadowSize: 2048, label: "high" },
-  { pixelRatio: 1.5, shadowSize: 2048, label: "medium" },
-  { pixelRatio: 1, shadowSize: 1024, label: "low" },
+  { pixelRatio: 1.5, shadowSize: 1024, label: "high" },
+  { pixelRatio: 1.25, shadowSize: 1024, label: "medium" },
+  { pixelRatio: 1, shadowSize: 512, label: "low" },
   { pixelRatio: 1, shadowSize: 0, label: "minimal" },
 ];
 
@@ -43,6 +43,9 @@ export function createStage(container: HTMLElement): Stage {
   renderer.setClearColor(0x000000, 0);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap; // soft-filtered in current three
+  // The shadow pass redraws every man; refresh it every other frame instead of every frame.
+  renderer.shadowMap.autoUpdate = false;
+  let frameNo = 0;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -128,6 +131,7 @@ export function createStage(container: HTMLElement): Stage {
     },
 
     render(): void {
+      renderer.shadowMap.needsUpdate = (frameNo++ & 1) === 0;
       renderer.render(scene, camera);
     },
 

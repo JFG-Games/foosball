@@ -70,7 +70,7 @@ export function createBall(model: THREE.Object3D | null): BallView {
     spinner.add(model.clone(true));
   } else {
     const sphere = new THREE.Mesh(
-      new THREE.SphereGeometry(TABLE.ballRadius, 24, 16),
+      new THREE.SphereGeometry(TABLE.ballRadius, 16, 12),
       new THREE.MeshLambertMaterial({ color: 0xffffff }),
     );
     sphere.castShadow = true;
