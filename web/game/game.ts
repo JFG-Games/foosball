@@ -19,19 +19,28 @@ import { Tutorial, type Rect, type TutorialStep } from "../ui/tutorial";
 import { Words } from "../ui/words";
 import {
   bestScore,
+  buyProduct,
   currentMatchId,
   fetchLeaderboard,
   freshSession,
+  GOLD_KIT,
   initVatar,
   onPlatformPause,
+  owns,
+  quickPlatformMatch,
   submitScore,
+  syncPurchases,
   type Identity,
+  type PlatformWait,
 } from "../vatar/client";
 import { createInput, type InputController } from "./input";
 import { matchPoints, outcomeFor } from "./scoring";
 import { LocalSession, OnlineSession, type Session, type SessionEvent } from "./session";
 
 type Phase = "idle" | "countdown" | "play" | "goal" | "over";
+
+/** The bought kit's colour. */
+const GOLD_HEX = 0xf2b705;
 
 /** After this long in the quick-match queue, offer to play the bot instead. */
 const OFFER_BOT_AFTER_MS = 7000;
@@ -151,6 +160,8 @@ export class Game {
     ]);
 
     this.identity = await initVatar();
+    // Restore purchases, but never hold the menu up for a slow server.
+    await Promise.race([syncPurchases(), new Promise((resolve) => window.setTimeout(resolve, 2500))]);
     onPlatformPause(
       () => this.autoPause(),
       () => sfx.resume(),
@@ -203,7 +214,20 @@ export class Game {
         this.forceTutorial = true;
         this.startSolo("rookie");
       },
+      shop: this.identity.connected ? { owned: owns(GOLD_KIT), buy: () => void this.buyKit() } : undefined,
     });
+  }
+
+  private async buyKit(): Promise<void> {
+    const result = await buyProduct(GOLD_KIT);
+    if (result === "cancelled") return;
+    if (result === "unlock_failed") {
+      this.screens.error("Your payment went through, but we could not unlock the kit yet. It will unlock the next time you open the game.", {
+        menu: () => this.backToMenu(),
+      });
+      return;
+    }
+    this.backToMenu(); // redraws the menu with the kit marked as owned
   }
 
   private backToMenu(): void {
@@ -253,8 +277,31 @@ export class Game {
   private async startOnline(opts: { roomCode?: string; create?: boolean }): Promise<void> {
     this.teardownMatch();
     this.screens.close();
+    const gen = this.startGen;
+    const quick = !opts.create && !opts.roomCode;
+
+    this.waitUi = this.screens.waiting("Connecting…", undefined, {
+      cancel: () => this.backToMenu(),
+      bot: quick ? () => this.startSolo(settings.difficulty) : undefined,
+      share: () => void this.shareInvite(),
+    });
+    if (quick) this.timers.push(window.setTimeout(() => this.waitUi?.offerBot(), OFFER_BOT_AFTER_MS));
+
+    // A quick match is paired by Lagos Life, so it exists on the platform and its result can be posted.
+    let vatarMatchId = await currentMatchId();
+    if (gen !== this.startGen) return;
+    if (quick && !vatarMatchId) {
+      const wait = quickPlatformMatch();
+      this.platformWait = wait;
+      this.waitUi?.update("Finding an opponent…");
+      vatarMatchId = await wait.match;
+      if (gen !== this.startGen) return; // cancelled while waiting
+      this.platformWait = null;
+      this.waitUi?.update("Connecting…");
+    }
+
     const token = await freshSession();
-    const vatarMatchId = await currentMatchId();
+    if (gen !== this.startGen) return;
     const session = new OnlineSession({
       url: SERVER_URL,
       sessionToken: token,
@@ -265,17 +312,12 @@ export class Game {
       refreshToken: freshSession,
     });
     this.attach(session);
-
-    const quick = !opts.create && !opts.roomCode;
-    this.waitUi = this.screens.waiting("Connecting…", undefined, {
-      cancel: () => this.backToMenu(),
-      bot: quick ? () => this.startSolo(settings.difficulty) : undefined,
-      share: () => void this.shareInvite(),
-    });
-    if (quick) this.timers.push(window.setTimeout(() => this.waitUi?.offerBot(), OFFER_BOT_AFTER_MS));
   }
 
   private inviteCode: string | undefined;
+  /** Bumped whenever a match is torn down, so a half-started online join can notice and stop. */
+  private startGen = 0;
+  private platformWait: PlatformWait | null = null;
 
   private async shareInvite(): Promise<void> {
     if (!this.inviteCode) return;
@@ -429,6 +471,7 @@ export class Game {
     this.hud.show(true);
     this.hud.setStatus(this.matchStatus(session));
     this.table?.setOwnTeam(this.myTeam);
+    this.table?.setOwnKit(owns(GOLD_KIT) ? GOLD_HEX : null);
     void this.acquireWakeLock();
   }
 
@@ -690,6 +733,9 @@ export class Game {
 
   /** Drop everything belonging to the current match. */
   private teardownMatch(): void {
+    this.startGen++; // abandons any startOnline() still waiting on the network
+    this.platformWait?.cancel();
+    this.platformWait = null;
     this.clearTimers();
     this.ending = true; // suppress the "connection lost" error for a deliberate close
     this.session?.dispose();

@@ -39,7 +39,14 @@ phone, location or money. This game fetches a fresh token (`Vatar.session()`) ea
 `Vatar.purchase(productId)` opens Lagos Life's checkout and returns a purchase id. Your
 **server** then calls `GET /purchases/{id}` to confirm (`status` is `paid`, `delivered` or
 `refunded`; amounts in naira) and `POST /purchases/{id}/deliver`. Never grant an item
-from a client-reported purchase. *(Not wired into the game yet.)*
+from a client-reported purchase.
+
+**Wired in:** one product, `gold_kit` (create it in the dashboard with that exact id; it is a
+one-off). The browser calls `Vatar.purchase`, then `POST /claim` on the game server, which
+verifies the session and the purchase, grants the item once (`server/store.ts`) and marks it
+delivered. `POST /entitlements` returns what a player owns, `Vatar.purchases()` restores
+interrupted purchases, and `POST /vatar-webhook` (signed `sha256=` HMAC) does the same from
+Vatar's `purchase.paid` nudge. Code: `server/http.ts`, `server/purchases.ts`.
 
 ### Matches and signed results
 
@@ -57,6 +64,11 @@ Implemented in [`server/vatar/client.ts`](../server/vatar/client.ts).
 
 The game only reports when **both** players name the same `vatarMatchId` *and* the
 platform's `GET /matches/{id}` lists both of them as players.
+
+**Quick match** is paired by the platform: the client calls `Vatar.match.quick({ stake: 0 })`,
+waits for `status: "playing"`, then joins our server with that match id (so the match exists on
+Lagos Life and our server posts its result). Private rooms use our own codes and are not
+platform matches. Stakes are not used.
 
 ## Setup flow
 

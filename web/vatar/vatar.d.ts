@@ -34,6 +34,9 @@ declare global {
     onPause(fn: () => void): () => void;
     onResume(fn: () => void): () => void;
     match: {
+      create(options: { stake: number; seats: number }): Promise<VatarMatchInfo>;
+      join(code: string): Promise<VatarMatchInfo>;
+      quick(options: { stake: number }): Promise<VatarMatchInfo>;
       current(): Promise<VatarMatchInfo | null>;
       leave(): Promise<VatarMatchInfo | null>;
       onUpdate(fn: (match: VatarMatchInfo) => void): () => void;

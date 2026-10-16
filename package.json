@@ -15,7 +15,7 @@
     "start": "tsx server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "tsx --test test/sim.test.ts test/match.test.ts test/server.test.ts",
+    "test": "tsx --test test/sim.test.ts test/match.test.ts test/server.test.ts test/purchases.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

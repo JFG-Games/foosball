@@ -68,6 +68,8 @@ export interface TableView {
   setActive(rod: number | null): void;
   /** Mark which side the local player is on (tints their goal and grips), or null. */
   setOwnTeam(team: Team | null): void;
+  /** Dress the local player's men in a custom kit colour (a purchase), or null for the team colour. */
+  setOwnKit(hex: number | null): void;
   /** Flash the goal pocket a team just scored in. */
   flashGoal(scorer: Team): void;
   /** World position of the middle of a goal mouth: the +x or -x end. */
@@ -497,6 +499,17 @@ export function createTable(assets: TableAssets): TableView {
   const lastAngle = new Float32Array(RODS.length).fill(Number.NaN);
   const lastOffset = new Float32Array(RODS.length).fill(Number.NaN);
 
+  let ownKit: number | null = null;
+
+  /** Colour each man: the team colour, or the bought kit for the local player's own side. */
+  function paintMen(): void {
+    manSlots.forEach((slot, i) => {
+      const team = RODS[slot.rod].team;
+      men.setColorAt(i, tint.setHex(team === ownTeam && ownKit !== null ? ownKit : TEAM_HEX[team]));
+    });
+    if (men.instanceColor) men.instanceColor.needsUpdate = true;
+  }
+
   function writeMen(rods: RodState[]): void {
     let moved = false;
     for (let r = 0; r < RODS.length; r++) {
@@ -557,6 +570,12 @@ export function createTable(assets: TableAssets): TableView {
 
     setOwnTeam(team: Team | null): void {
       ownTeam = team;
+      paintMen();
+    },
+
+    setOwnKit(hex: number | null): void {
+      ownKit = hex;
+      paintMen();
     },
 
     flashGoal(scorer: Team): void {

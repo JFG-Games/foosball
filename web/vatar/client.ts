@@ -1,4 +1,4 @@
-import { VATAR_SDK_URL } from "../config";
+import { API_URL, VATAR_SDK_URL } from "../config";
 import { readStat, settings, writeStat } from "../settings";
 
 /**
@@ -189,3 +189,132 @@ export async function fetchLeaderboard(): Promise<Leaderboard> {
 }
 
 export const bestScore = (): number => readStat<number>("bestScore", 0);
+
+/* ─────────────────────────────── matches ─────────────────────────────── */
+
+export interface PlatformWait {
+  /** The platform match id once two players are paired, or undefined if there is none to use. */
+  match: Promise<string | undefined>;
+  /** Stop waiting and leave the platform queue. */
+  cancel(): void;
+}
+
+/**
+ * Pair with another player through the platform (`Vatar.match.quick`, no
+ * stake), so the match exists on Lagos Life and our server can post its result.
+ * Resolves undefined outside the shell or if the platform refuses, in which
+ * case the game falls back to its own matchmaking.
+ */
+export function quickPlatformMatch(): PlatformWait {
+  const sdk = window.Vatar;
+  if (!sdkReady || !sdk?.match?.quick) return { match: Promise.resolve(undefined), cancel: () => {} };
+
+  let cancelled = false;
+  let matchId: string | undefined;
+  let unsubscribe: () => void = () => {};
+  let settle: (id?: string) => void = () => {};
+
+  const match = new Promise<string | undefined>((resolve) => {
+    settle = (id) => {
+      unsubscribe();
+      resolve(id);
+    };
+    sdk.match
+      .quick({ stake: 0 })
+      .then((m) => {
+        matchId = m.id;
+        if (cancelled) {
+          void sdk.match.leave().catch(() => {});
+          return settle(undefined);
+        }
+        if (m.status === "playing") return settle(m.id);
+        unsubscribe = sdk.match.onUpdate((update) => {
+          if (update.id !== m.id) return;
+          if (update.status === "playing") settle(update.id);
+          else if (update.status !== "open") settle(undefined);
+        });
+      })
+      .catch((error) => {
+        console.warn("[vatar] match.quick failed, using our own matchmaking", error);
+        settle(undefined);
+      });
+  });
+
+  return {
+    match,
+    cancel() {
+      cancelled = true;
+      if (matchId) void sdk.match.leave().catch(() => {});
+      settle(undefined);
+    },
+  };
+}
+
+/* ─────────────────────────────── shop ─────────────────────────────── */
+
+/** The one product so far: a gold kit for your own players. Create it in the dashboard with this id. */
+export const GOLD_KIT = "gold_kit";
+
+const owned = new Set<string>();
+export const owns = (productId: string): boolean => owned.has(productId);
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${path} answered ${res.status}`);
+  return (await res.json()) as T;
+}
+
+/** Our server checks the purchase with Vatar, gives the item once and marks it delivered. */
+async function claim(purchaseId: string): Promise<void> {
+  const { items } = await postJson<{ productId: string; items: string[] }>("/claim", {
+    session: await freshSession(),
+    purchaseId,
+  });
+  for (const item of items) owned.add(item);
+}
+
+/**
+ * After sign-in: load what the server says we own, and finish any purchase
+ * that was paid but not delivered (a crash, or a trip to the payment page).
+ */
+export async function syncPurchases(): Promise<void> {
+  if (!sdkReady || !window.Vatar) return;
+  const finish = (p: { purchaseId: string }): Promise<void> =>
+    claim(p.purchaseId).catch((error) => console.warn("[vatar] could not claim purchase", error));
+  window.Vatar.onPurchase((p) => void finish(p));
+  try {
+    const { items } = await postJson<{ items: string[] }>("/entitlements", { session: await freshSession() });
+    for (const item of items) owned.add(item);
+  } catch (error) {
+    console.warn("[vatar] could not load purchases", error);
+  }
+  try {
+    for (const p of await window.Vatar.purchases()) await finish(p);
+  } catch (error) {
+    console.warn("[vatar] could not list purchases", error);
+  }
+}
+
+/** Open Lagos Life's pay sheet. "ok" once paid and unlocked; "cancelled" if the player backed out. */
+export async function buyProduct(productId: string): Promise<"ok" | "cancelled" | "unlock_failed"> {
+  if (!sdkReady || !window.Vatar) return "cancelled";
+  let purchaseId: string;
+  try {
+    purchaseId = (await window.Vatar.purchase(productId)).purchaseId;
+  } catch (error) {
+    console.info("[vatar] purchase did not complete", (error as { code?: string }).code ?? error);
+    return "cancelled";
+  }
+  try {
+    await claim(purchaseId);
+    return "ok";
+  } catch (error) {
+    // Paid but not delivered: Vatar lists it in purchases() next time, and we retry then.
+    console.warn("[vatar] paid, but the unlock failed", error);
+    return "unlock_failed";
+  }
+}

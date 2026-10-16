@@ -100,6 +100,8 @@ export class Screens {
     friend(): void;
     leaderboard(): void;
     howTo(): void;
+    /** The shop button; absent outside Lagos Life, where nothing can be bought. */
+    shop?: { owned: boolean; buy(): void };
   }): { ready(): void; progress(fraction: number): void } {
     const initial = esc((identity.name || "P").slice(0, 1).toUpperCase());
     const avatar = identity.avatar
@@ -127,6 +129,7 @@ export class Screens {
           <button class="btn ghost" data-go="board">🏆 SCORES</button>
           <button class="btn ghost" data-go="howto">❓ HOW TO PLAY</button>
         </div>
+        ${actions.shop ? `<button class="btn ghost" data-go="shop" ${actions.shop.owned ? "disabled" : ""}>✨ ${actions.shop.owned ? "GOLD KIT · OWNED" : "GOLD KIT"}</button>` : ""}
       </div>
       <div class="toggles" data-toggles></div>`,
     );
@@ -137,6 +140,7 @@ export class Screens {
       friend: actions.friend,
       board: actions.leaderboard,
       howto: actions.howTo,
+      shop: () => actions.shop?.buy(),
     });
 
     const loading = el.querySelector<HTMLElement>("[data-loading]")!;

@@ -19,3 +19,15 @@ export const SERVER_URL: string = (() => {
 
 /** Lagos Life / Vatar Games browser SDK. */
 export const VATAR_SDK_URL = "https://lagoslife.app/sdk/vatar-games-v1.js";
+
+/**
+ * Base URL of the game server's HTTP endpoints (purchases). Derived from the
+ * WebSocket URL, or set VITE_API_URL. In dev, Vite proxies `/api` to the server.
+ */
+export const API_URL: string = (() => {
+  const explicit = import.meta.env.VITE_API_URL as string | undefined;
+  if (explicit) return explicit.replace(/\/+$/, "");
+  const ws = import.meta.env.VITE_SERVER_URL as string | undefined;
+  if (ws) return ws.replace(/^ws/, "http").replace(/\/+$/, "");
+  return import.meta.env.DEV ? `${location.origin}/api` : "http://localhost:8080";
+})();

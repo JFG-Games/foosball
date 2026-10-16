@@ -4,6 +4,7 @@ import "dotenv/config";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { ClientMessage, ServerMessage } from "@shared/protocol";
 import { PORT, VATAR_LIVE, VATAR_RESULTS_SECRET, VATAR_SANDBOX } from "./config";
+import { createHttpServer } from "./http";
 import { Lobby } from "./lobby";
 
 /**
@@ -17,7 +18,9 @@ import { Lobby } from "./lobby";
  * It deliberately serves NO static assets: the client is hosted separately
  * over HTTPS so the Lagos Life shell can frame it.
  */
-const wss = new WebSocketServer({ port: PORT, maxPayload: 16 * 1024 });
+const http = createHttpServer();
+const wss = new WebSocketServer({ server: http, maxPayload: 16 * 1024 });
+http.listen(PORT);
 const lobby = new Lobby();
 
 wss.on("connection", (socket: WebSocket) => {

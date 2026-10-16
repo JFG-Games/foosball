@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 
 // Lagos Life frames the game in an iframe, so the host must allow it (see docs/ARCHITECTURE.md).
 const FRAMING_HEADERS = {
-  "Content-Security-Policy": "frame-ancestors https://lagoslife.app https://*.lagoslife.app",
+  "Content-Security-Policy": "frame-ancestors https://lagoslife.app https://www.lagoslife.app https://naijalife.app https://www.naijalife.app https://lagoslife.eliysites.com",
 };
 
 export default defineConfig({
@@ -30,6 +30,8 @@ export default defineConfig({
     // both the page and the game server; the browser connects to `/ws` same-origin.
     proxy: {
       "/ws": { target: "ws://localhost:8080", ws: true, rewrite: () => "/" },
+      // Purchase endpoints on the game server (`/api/claim` -> `/claim`).
+      "/api": { target: "http://localhost:8080", rewrite: (path) => path.replace(/^\/api/, "") },
     },
   },
   // `vite preview` serves the production build; same framing rule.
