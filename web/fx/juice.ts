@@ -57,6 +57,8 @@ export class Juice {
   private slowTarget = 1;
   private slowHoldMs = 0;
   private celebration: Celebration | null = null;
+  /** Bought cosmetics for the local player: colours, or null when off. Set per match. */
+  cosmetics: { trail: number | null; party: number | null } = { trail: null, party: null };
   private lastBall: Vec3 | null = null;
   private lastBallAt = 0;
   private readonly lastWordAt = new Map<string, number>();
@@ -104,6 +106,19 @@ export class Juice {
       if (speed > 1.6 && speed < 12) {
         const p = this.d.particles;
         p.spark(ball.x, ball.y, ball.z, 0, 0.02, 0, 0xfff2b0, 0.009 + Math.min(speed, 6) * 0.0015, 0.3, { gravity: 0, drag: 1, shrink: 0 });
+      }
+      // A bought trail: flames that rise off the ball.
+      const trail = this.cosmetics.trail;
+      if (trail !== null && speed > 1 && speed < 12) {
+        const p = this.d.particles;
+        for (let n = 0; n < 2; n++) {
+          p.spark(
+            ball.x + (Math.random() - 0.5) * 0.012, ball.y, ball.z + (Math.random() - 0.5) * 0.012,
+            (Math.random() - 0.5) * 0.14, 0.12 + Math.random() * 0.2, (Math.random() - 0.5) * 0.14,
+            n === 0 ? trail : 0xffe08a, 0.016 + Math.random() * 0.012, 0.45 + Math.random() * 0.25,
+            { gravity: -0.5, drag: 2.5, glow: 1, shrink: 0 },
+          );
+        }
       }
     }
     this.lastBall = ball ? { ...ball } : null;
@@ -296,6 +311,13 @@ export class Juice {
     const palette = mine ? [TEAM_HEX[team], 0xffd23f, 0xffffff, 0x3ddc84] : [TEAM_HEX[team], 0xffffff, 0x8888aa];
     p.confettiBurst(gx, 0.02, 0, mine ? 150 : 50, palette, 1.9);
     p.burst(gx, 0.02, 0, 40, 1.5, 0xffd23f, { size: 0.01, life: 0.8, gravity: 3 });
+    // A bought goal party, for your own goals only.
+    const party = this.cosmetics.party;
+    if (mine && party !== null) {
+      p.confettiBurst(gx, 0.02, 0, 130, [party, 0xffffff, 0xfff2b0], 2.3);
+      p.burst(gx, 0.02, 0, 60, 2.2, party, { size: 0.012, life: 1.1, gravity: 2 });
+      window.setTimeout(() => p.confettiBurst(gx, 0.05, 0, 90, [party, 0xffffff], 2.5), 350);
+    }
 
     // Comic words.
     const lead = score[team] - score[other(team)];

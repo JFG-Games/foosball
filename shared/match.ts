@@ -2,6 +2,7 @@ import {
   COUNTDOWN_MS,
   GOAL_PAUSE_MS,
   MATCH_SCORE_TO_WIN,
+  MATCH_TIME_LIMIT_MS,
   RODS,
   SIM_HZ,
   type Team,
@@ -26,7 +27,7 @@ export type MatchEvent =
   | { t: "hits"; hits: HitEvent[] }
   | { t: "goal"; team: Team; score: Record<Team, number>; ball: Vec3; vel: Vec3; pauseMs: number }
   | { t: "serve" }
-  | { t: "end"; winner: Team | "draw"; score: Record<Team, number>; stats: MatchStats };
+  | { t: "end"; winner: Team | "draw"; score: Record<Team, number>; stats: MatchStats; byTime?: boolean };
 
 const TICK_MS = 1000 / SIM_HZ;
 
@@ -47,7 +48,27 @@ export class MatchCore {
     playMs: 0,
   };
 
-  constructor(private readonly scoreToWin = MATCH_SCORE_TO_WIN) {}
+  constructor(
+    private readonly scoreToWin = MATCH_SCORE_TO_WIN,
+    private readonly timeLimitMs = MATCH_TIME_LIMIT_MS,
+  ) {}
+
+  /** Milliseconds of play left before time runs out. */
+  get timeLeftMs(): number {
+    return Math.max(0, this.timeLimitMs - this.stats.playMs);
+  }
+
+  /** Who is ahead when time runs out: the higher score, or a draw. */
+  private leader(): Team | "draw" {
+    const { left, right } = this.state.score;
+    return left === right ? "draw" : left > right ? "left" : "right";
+  }
+
+  private finish(winner: Team | "draw", events: MatchEvent[], byTime: boolean): void {
+    this.winner = winner;
+    this.phase = "over";
+    events.push({ t: "end", winner, score: { ...this.state.score }, stats: this.finalStats(), byTime });
+  }
 
   /** Events that describe the match as it begins. */
   begin(): MatchEvent[] {
@@ -84,8 +105,12 @@ export class MatchCore {
 
   private advanceFromPause(events: MatchEvent[]): void {
     if (this.phase === "goal" && this.winner !== null) {
-      this.phase = "over";
-      events.push({ t: "end", winner: this.winner, score: { ...this.state.score }, stats: this.finalStats() });
+      this.finish(this.winner, events, false);
+      return;
+    }
+    // A goal at the buzzer: the clock ran out during the celebration, so it decides the match now.
+    if (this.phase === "goal" && this.stats.playMs >= this.timeLimitMs) {
+      this.finish(this.leader(), events, true);
       return;
     }
     this.state = serveBall(this.state, this.conceded);
@@ -128,6 +153,8 @@ export class MatchCore {
         vel: result.goal.vel,
         pauseMs: GOAL_PAUSE_MS,
       });
+    } else if (this.stats.playMs >= this.timeLimitMs) {
+      this.finish(this.leader(), events, true);
     }
   }
 

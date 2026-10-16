@@ -13,7 +13,14 @@ export const SNAPSHOT_HZ = 20;
 export const MAX_INPUTS_PER_SEC = 60;
 
 /** First team to this many goals wins. */
-export const MATCH_SCORE_TO_WIN = 5;
+export const MATCH_SCORE_TO_WIN = 3;
+
+/**
+ * Play time limit (ms). Only time with the ball in play counts, not the
+ * countdown or goal celebrations. If nobody has reached MATCH_SCORE_TO_WIN
+ * when it runs out, the higher score wins and a tie is a draw.
+ */
+export const MATCH_TIME_LIMIT_MS = 180_000;
 
 /** Pause after a goal, before the next ball is served (ms). */
 export const GOAL_PAUSE_MS = 2600;

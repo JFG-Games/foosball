@@ -54,7 +54,7 @@ export type ServerMessage =
       pauseMs: number;
     }
   | { t: "serve" }
-  | { t: "end"; winner: Team | "draw"; score: Record<Team, number>; stats: MatchStats; forfeit?: boolean }
+  | { t: "end"; winner: Team | "draw"; score: Record<Team, number>; stats: MatchStats; forfeit?: boolean; byTime?: boolean }
   /** The other player wants a rematch. */
   | { t: "rematch"; from: Team }
   | { t: "error"; code: string; message: string };

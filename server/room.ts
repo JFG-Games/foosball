@@ -356,7 +356,7 @@ export class Room {
         this.broadcast({ t: "serve" });
         return true;
       case "end":
-        this.broadcast({ t: "end", winner: event.winner, score: event.score, stats: event.stats });
+        this.broadcast({ t: "end", winner: event.winner, score: event.score, stats: event.stats, byTime: event.byTime });
         void this.reportResult(event.winner);
         this.idleTimer = setTimeout(() => this.close(), REMATCH_WINDOW_MS);
         return false;

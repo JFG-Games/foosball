@@ -32,7 +32,8 @@ export interface Hud {
   setStatus(text: string): void;
   setRod(slot: number, auto: boolean, announce?: boolean): void;
   setSound(on: boolean): void;
-  setTimer(ms: number): void;
+  /** Play time left in ms; shown as a countdown. */
+  setTimer(msLeft: number): void;
 
   flash(color?: string): void;
   speedLines(): void;
@@ -63,7 +64,7 @@ export function createHud(root: HTMLElement, handlers: HudHandlers): Hud {
   hud.innerHTML = `
     <div class="scoreboard">
       <div class="plate left"><span class="score" data-s="left">0</span><div class="who"><span class="you" hidden>YOU</span><span class="name" data-n="left">BLUE</span></div></div>
-      <div class="vs"><small>FIRST TO ${MATCH_SCORE_TO_WIN}</small><b data-timer>0:00</b></div>
+      <div class="vs"><small>FIRST TO ${MATCH_SCORE_TO_WIN}</small><b data-timer>3:00</b></div>
       <div class="plate right"><span class="score" data-s="right">0</span><div class="who"><span class="you" hidden>YOU</span><span class="name" data-n="right">RED</span></div></div>
     </div>
     <div class="hud-corner left"><button class="icon-btn" data-act="pause" aria-label="Pause">II</button></div>
@@ -180,8 +181,10 @@ export function createHud(root: HTMLElement, handlers: HudHandlers): Hud {
 
     setSound,
 
-    setTimer(ms: number): void {
-      const s = Math.floor(ms / 1000);
+    /** Show the play time left, counting down. */
+    setTimer(msLeft: number): void {
+      const s = Math.ceil(msLeft / 1000);
+      timer.classList.toggle("low", s <= 30);
       const text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
       if (text !== lastTimerText) {
         lastTimerText = text;

@@ -176,3 +176,102 @@ test("a stronger bot out-scores a weaker one", () => {
   }
   assert.ok(strong > weak, `legend ${strong} vs rookie ${weak}`);
 });
+
+/** Play (no inputs, ball parked at rest) until `core` reports its end, returning that event. */
+function playToEnd(core: MatchCore): Extract<MatchEvent, { t: "end" }> {
+  const events = runUntil(core, "over");
+  const end = events.find((e) => e.t === "end");
+  assert.ok(end && end.t === "end", "the match ended");
+  return end;
+}
+
+/** Hold the ball still so only the clock can end the match. */
+function parkBall(core: MatchCore): void {
+  core.state.ball.vel.x = 0;
+  core.state.ball.vel.z = 0;
+  core.state.ball.pos.x = 0;
+  core.state.ball.pos.z = 0;
+}
+
+test("the default is first to 3 goals within 3 minutes", async () => {
+  const { MATCH_SCORE_TO_WIN, MATCH_TIME_LIMIT_MS } = await import("@shared/constants");
+  assert.equal(MATCH_SCORE_TO_WIN, 3);
+  assert.equal(MATCH_TIME_LIMIT_MS, 180_000);
+});
+
+test("when time runs out the higher score wins", () => {
+  const core = new MatchCore(3, 1000);
+  runUntil(core, "play");
+  core.state = { ...core.state, score: { left: 1, right: 0 } };
+  for (let i = 0; i < 70 && core.phase === "play"; i++) {
+    parkBall(core);
+    const events = core.tick([]);
+    const end = events.find((e) => e.t === "end");
+    if (end && end.t === "end") {
+      assert.equal(end.winner, "left");
+      assert.equal(end.byTime, true);
+      assert.equal(core.phase, "over");
+      return;
+    }
+  }
+  assert.fail("time should have run out");
+});
+
+test("a tie when time runs out is a draw", () => {
+  const core = new MatchCore(3, 1000);
+  runUntil(core, "play");
+  core.state = { ...core.state, score: { left: 2, right: 2 } };
+  for (let i = 0; i < 70 && core.phase === "play"; i++) {
+    parkBall(core);
+    const end = core.tick([]).find((e) => e.t === "end");
+    if (end && end.t === "end") {
+      assert.equal(end.winner, "draw");
+      assert.equal(end.byTime, true);
+      return;
+    }
+  }
+  assert.fail("time should have run out");
+});
+
+test("only time with the ball in play counts toward the clock", () => {
+  const core = new MatchCore(3, 5000);
+  assert.equal(core.timeLeftMs, 5000);
+  runUntil(core, "play"); // the countdown does not use up the clock
+  assert.equal(core.timeLeftMs, 5000);
+  parkBall(core);
+  for (let i = 0; i < 30; i++) {
+    parkBall(core);
+    core.tick([]);
+  }
+  assert.ok(core.timeLeftMs < 5000 && core.timeLeftMs > 4000);
+});
+
+test("reaching 3 goals ends the match before time runs out", () => {
+  const core = inPlay(); // default: first to 3
+  for (let g = 0; g < 3; g++) {
+    aimAtRightGoal(core);
+    core.tick([]);
+    assert.equal(core.phase, "goal");
+    if (g < 2) runUntil(core, "play");
+  }
+  const end = playToEnd(core);
+  assert.equal(end.winner, "left");
+  assert.equal(end.byTime, false);
+  assert.deepEqual(end.score, { left: 3, right: 0 });
+});
+
+test("a goal at the buzzer still counts, then the clock decides", () => {
+  const core = new MatchCore(3, 1500);
+  runUntil(core, "play");
+  // Run the clock down to the last tick, then score on it.
+  while (core.timeLeftMs > TICK * 1.5) {
+    parkBall(core);
+    core.tick([]);
+  }
+  aimAtRightGoal(core);
+  const events = core.tick([]);
+  assert.ok(events.some((e) => e.t === "goal"), "the buzzer-beater counts");
+  const end = playToEnd(core);
+  assert.equal(end.winner, "left");
+  assert.equal(end.byTime, true);
+});

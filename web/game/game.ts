@@ -1,6 +1,6 @@
 import { Vector3 } from "three";
 import type { Difficulty } from "@shared/bot";
-import { RODS, TABLE, type Team } from "@shared/constants";
+import { MATCH_TIME_LIMIT_MS, RODS, TABLE, type Team } from "@shared/constants";
 import type { RodState, Vec3 } from "@shared/types";
 import { sfx } from "../audio";
 import { SERVER_URL } from "../config";
@@ -12,6 +12,7 @@ import { loadBallModel } from "../scene/ball";
 import { loadFigureGeometry } from "../scene/figure";
 import { createTable, type TableView } from "../scene/table";
 import { readStat, saveSettings, settings, writeStat } from "../settings";
+import { equip, equippedFor, SHOP, unequip } from "../shop";
 import { other } from "../theme";
 import { createHud, type Hud } from "../ui/hud";
 import { Screens } from "../ui/screens";
@@ -23,7 +24,6 @@ import {
   currentMatchId,
   fetchLeaderboard,
   freshSession,
-  GOLD_KIT,
   initVatar,
   onPlatformPause,
   owns,
@@ -38,9 +38,6 @@ import { matchPoints, outcomeFor } from "./scoring";
 import { LocalSession, OnlineSession, type Session, type SessionEvent } from "./session";
 
 type Phase = "idle" | "countdown" | "play" | "goal" | "over";
-
-/** The bought kit's colour. */
-const GOLD_HEX = 0xf2b705;
 
 /** After this long in the quick-match queue, offer to play the bot instead. */
 const OFFER_BOT_AFTER_MS = 7000;
@@ -214,20 +211,38 @@ export class Game {
         this.forceTutorial = true;
         this.startSolo("rookie");
       },
-      shop: this.identity.connected ? { owned: owns(GOLD_KIT), buy: () => void this.buyKit() } : undefined,
+      shop: this.identity.connected ? () => this.openShop() : undefined,
     });
   }
 
-  private async buyKit(): Promise<void> {
-    const result = await buyProduct(GOLD_KIT);
-    if (result === "cancelled") return;
-    if (result === "unlock_failed") {
-      this.screens.error("Your payment went through, but we could not unlock the kit yet. It will unlock the next time you open the game.", {
-        menu: () => this.backToMenu(),
-      });
-      return;
+  private openShop(): void {
+    const items = SHOP.map((item) => ({
+      ...item,
+      state: !owns(item.id) ? ("buy" as const) : equippedFor(item.kind)?.id === item.id ? ("on" as const) : ("equip" as const),
+    }));
+    this.screens.shop(items, { act: (id) => void this.shopAct(id), back: () => this.backToMenu() });
+  }
+
+  /** Buy an item, or switch one you own on or off. */
+  private async shopAct(id: string): Promise<void> {
+    const item = SHOP.find((candidate) => candidate.id === id);
+    if (!item) return;
+    if (!owns(id)) {
+      const result = await buyProduct(id);
+      if (result === "cancelled") return; // backed out of the pay sheet: stay in the shop
+      if (result === "unlock_failed") {
+        this.screens.error("Your payment went through, but we could not unlock it yet. It will unlock the next time you open the game.", {
+          menu: () => this.backToMenu(),
+        });
+        return;
+      }
+      equip(item); // use what you just bought
+    } else if (equippedFor(item.kind)?.id === id) {
+      unequip(item.kind);
+    } else {
+      equip(item);
     }
-    this.backToMenu(); // redraws the menu with the kit marked as owned
+    this.openShop();
   }
 
   private backToMenu(): void {
@@ -471,7 +486,8 @@ export class Game {
     this.hud.show(true);
     this.hud.setStatus(this.matchStatus(session));
     this.table?.setOwnTeam(this.myTeam);
-    this.table?.setOwnKit(owns(GOLD_KIT) ? GOLD_HEX : null);
+    this.table?.setOwnKit(equippedFor("kit")?.color ?? null);
+    this.juice.cosmetics = { trail: equippedFor("trail")?.color ?? null, party: equippedFor("party")?.color ?? null };
     void this.acquireWakeLock();
   }
 
@@ -542,7 +558,7 @@ export class Game {
     return [
       {
         title: "THIS IS YOU",
-        body: `You play ${colour}. Score 5 goals before your rival does to win!`,
+        body: `You play ${colour}. Score 3 goals before your rival does, or lead when the 3 minutes are up!`,
         target: () => el(".plate.mine") ?? el(".scoreboard"),
       },
       {
@@ -586,7 +602,7 @@ export class Game {
       },
       {
         title: "READY?",
-        body: "First to 5 goals wins. Good luck — show them what you've got!",
+        body: "First to 3 goals wins, or whoever leads after 3 minutes. Good luck — show them what you've got!",
         target: () => null,
       },
     ];
@@ -604,7 +620,7 @@ export class Game {
     this.score = { left: 0, right: 0 };
     this.playMs = 0;
     this.hud.setScore(this.score);
-    this.hud.setTimer(0);
+    this.hud.setTimer(MATCH_TIME_LIMIT_MS);
     this.table?.setScore(this.score);
     this.rig.zoomTo(1);
     this.holdOpen = false;
@@ -656,6 +672,7 @@ export class Game {
             score: e.score,
             stats: e.stats,
             forfeit: Boolean(e.forfeit),
+            byTime: Boolean(e.byTime),
             points,
             best: sent.best,
             isBest: sent.isBest,
@@ -841,7 +858,8 @@ export class Game {
 
     if (this.phase === "play" && !(session?.paused ?? false)) {
       this.playMs += realDt;
-      this.hud.setTimer(this.playMs);
+      // Solo follows the sim's own clock (it slows in slow-motion); online counts real time.
+      this.hud.setTimer(session instanceof LocalSession ? session.timeLeftMs : Math.max(0, MATCH_TIME_LIMIT_MS - this.playMs));
     }
     if (view && view.score.left !== this.score.left) this.hud.setScore(view.score);
 

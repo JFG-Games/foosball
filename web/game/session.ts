@@ -22,7 +22,7 @@ export type SessionEvent =
   | { t: "hits"; hits: HitEvent[] }
   | { t: "goal"; team: Team; score: Record<Team, number>; ball: Vec3; vel: Vec3; pauseMs: number }
   | { t: "serve" }
-  | { t: "end"; winner: Team | "draw"; score: Record<Team, number>; stats: MatchStats; forfeit?: boolean }
+  | { t: "end"; winner: Team | "draw"; score: Record<Team, number>; stats: MatchStats; forfeit?: boolean; byTime?: boolean }
   | { t: "rematch" }
   /** Connection trouble: ours dropped / came back, or the opponent's did. */
   | { t: "link"; state: "reconnecting" | "restored" | "opponent_away" | "opponent_back" }
@@ -124,6 +124,11 @@ export class LocalSession implements Session {
     if (steps === 6) this.accumulator = 0;
   }
 
+  /** Seconds-accurate play clock for the HUD (follows slow-motion). */
+  get timeLeftMs(): number {
+    return this.core.timeLeftMs;
+  }
+
   view(): RenderState | null {
     const cur = this.core.state;
     const a = cur.epoch !== this.prev.epoch ? 1 : Math.min(1, this.accumulator / TICK_MS);
@@ -164,7 +169,7 @@ export class LocalSession implements Session {
         this.onEvent({ t: "serve" });
         break;
       case "end":
-        this.onEvent({ t: "end", winner: e.winner, score: e.score, stats: e.stats });
+        this.onEvent({ t: "end", winner: e.winner, score: e.score, stats: e.stats, byTime: e.byTime });
         break;
     }
   }
@@ -401,7 +406,7 @@ export class OnlineSession implements Session {
       case "end":
         this.finished = true;
         // Let the last goal's celebration play out first.
-        this.later({ t: "end", winner: message.winner, score: message.score, stats: message.stats, forfeit: message.forfeit });
+        this.later({ t: "end", winner: message.winner, score: message.score, stats: message.stats, forfeit: message.forfeit, byTime: message.byTime });
         break;
 
       case "rematch":

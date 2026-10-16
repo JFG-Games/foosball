@@ -252,9 +252,6 @@ export function quickPlatformMatch(): PlatformWait {
 
 /* ─────────────────────────────── shop ─────────────────────────────── */
 
-/** The one product so far: a gold kit for your own players. Create it in the dashboard with this id. */
-export const GOLD_KIT = "gold_kit";
-
 const owned = new Set<string>();
 export const owns = (productId: string): boolean => owned.has(productId);
 

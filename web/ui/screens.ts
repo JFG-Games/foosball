@@ -3,6 +3,7 @@ import type { Difficulty } from "@shared/bot";
 import type { MatchStats } from "@shared/types";
 import { sfx } from "../audio";
 import { saveSettings, settings } from "../settings";
+import { KIND_LABEL, type ShopItem, type ShopKind } from "../shop";
 import type { Identity, Leaderboard } from "../vatar/client";
 
 /**
@@ -22,6 +23,8 @@ export interface ResultView {
   score: Record<Team, number>;
   stats: MatchStats;
   forfeit: boolean;
+  /** The match ended because time ran out. */
+  byTime?: boolean;
   /** Leaderboard points earned, and how that compares. */
   points: number;
   best: number;
@@ -100,8 +103,8 @@ export class Screens {
     friend(): void;
     leaderboard(): void;
     howTo(): void;
-    /** The shop button; absent outside Lagos Life, where nothing can be bought. */
-    shop?: { owned: boolean; buy(): void };
+    /** Opens the shop; absent outside Lagos Life, where nothing can be bought. */
+    shop?: () => void;
   }): { ready(): void; progress(fraction: number): void } {
     const initial = esc((identity.name || "P").slice(0, 1).toUpperCase());
     const avatar = identity.avatar
@@ -129,7 +132,7 @@ export class Screens {
           <button class="btn ghost" data-go="board">🏆 SCORES</button>
           <button class="btn ghost" data-go="howto">❓ HOW TO PLAY</button>
         </div>
-        ${actions.shop ? `<button class="btn ghost" data-go="shop" ${actions.shop.owned ? "disabled" : ""}>✨ ${actions.shop.owned ? "GOLD KIT · OWNED" : "GOLD KIT"}</button>` : ""}
+        ${actions.shop ? `<button class="btn ghost" data-go="shop">✨ SHOP</button>` : ""}
       </div>
       <div class="toggles" data-toggles></div>`,
     );
@@ -140,7 +143,7 @@ export class Screens {
       friend: actions.friend,
       board: actions.leaderboard,
       howto: actions.howTo,
-      shop: () => actions.shop?.buy(),
+      shop: () => actions.shop?.(),
     });
 
     const loading = el.querySelector<HTMLElement>("[data-loading]")!;
@@ -174,7 +177,7 @@ export class Screens {
               <div>${d.name}<small>${d.blurb}</small></div><span class="stars">${d.stars}</span></button>`,
           ).join("")}
         </div>
-        <p>You play BLUE. First to 5 wins.</p>
+        <p>You play BLUE. First to 3 goals wins, or lead after 3 minutes.</p>
         <button class="btn ghost tiny" data-go="back">← BACK</button>
       </div>`,
       true,
@@ -182,6 +185,39 @@ export class Screens {
     const actions: Record<string, () => void> = { back };
     for (const d of DIFFS) actions[d.id] = () => pick(d.id);
     this.bind(el, actions);
+  }
+
+  /* ──────────────────────────────── shop ──────────────────────────────── */
+
+  shop(
+    items: (ShopItem & { state: "buy" | "equip" | "on" })[],
+    actions: { act(id: string): void; back(): void },
+  ): void {
+    const label = { buy: "BUY", equip: "EQUIP", on: "✓ ON" } as const;
+    const group = (kind: ShopKind): string => `
+      <div class="shop-group">${KIND_LABEL[kind]}</div>
+      ${items
+        .filter((item) => item.kind === kind)
+        .map(
+          (item) => `<button class="shop-item ${item.state}" data-go="item:${esc(item.id)}">
+            <span class="swatch" style="background:#${item.color.toString(16).padStart(6, "0")}"></span>
+            <span class="what">${esc(item.name)}<small>${esc(item.blurb)}</small></span>
+            <span class="tag">${label[item.state]}</span></button>`,
+        )
+        .join("")}`;
+    const el = this.open(
+      "shop",
+      `<div class="panel">
+        <h2>SHOP</h2>
+        <p>Looks only: nothing here changes how the game plays. You see the price before you pay. Tap an item you own to switch it on or off.</p>
+        ${(["kit", "trail", "party"] as ShopKind[]).map(group).join("")}
+        <button class="btn ghost tiny" data-go="back">← BACK</button>
+      </div>`,
+      true,
+    );
+    const handlers: Record<string, () => void> = { back: actions.back };
+    for (const item of items) handlers[`item:${item.id}`] = () => actions.act(item.id);
+    this.bind(el, handlers);
   }
 
   /* ─────────────────────────────── friends ─────────────────────────────── */
@@ -335,7 +371,7 @@ export class Screens {
       "results",
       `
       <div class="result-title" style="--fill:${fill}">${title}</div>
-      ${r.forfeit ? `<div class="hint">Your opponent left the match</div>` : ""}
+      ${r.forfeit ? `<div class="hint">Your opponent left the match</div>` : r.byTime ? `<div class="hint">TIME'S UP${r.outcome === "draw" ? " · IT'S A TIE" : ""}</div>` : ""}
       <div class="final"><span class="l">${r.score.left}</span><span class="dash">–</span><span class="r">${r.score.right}</span></div>
       <div class="hint">${esc(r.names.left)} vs ${esc(r.names.right)}</div>
       <div class="stats">
