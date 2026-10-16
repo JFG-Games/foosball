@@ -171,6 +171,7 @@ export class Lobby {
   private async identify(msg: Extract<ClientMessage, { t: "join" }>): Promise<Player> {
     if (VATAR_LIVE && msg.sessionToken !== "sandbox-token") {
       const verified = await verifySession(msg.sessionToken);
+      console.log(`[lobby] Vatar verified player ${verified.playerId}`);
       return {
         id: verified.playerId,
         displayName: verified.name,

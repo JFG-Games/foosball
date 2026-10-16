@@ -3,7 +3,7 @@
 import "dotenv/config";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { ClientMessage, ServerMessage } from "@shared/protocol";
-import { PORT } from "./config";
+import { PORT, VATAR_LIVE, VATAR_RESULTS_SECRET, VATAR_SANDBOX } from "./config";
 import { Lobby } from "./lobby";
 
 /**
@@ -39,4 +39,5 @@ function send(socket: WebSocket, msg: ServerMessage): void {
   socket.send(JSON.stringify(msg));
 }
 
+console.log(`[server] Vatar: secret ${VATAR_LIVE ? "set" : "MISSING"}, results secret ${VATAR_RESULTS_SECRET ? "set" : "MISSING"}, sandbox ${VATAR_SANDBOX}`);
 console.log(`[server] authoritative WebSocket listening on ws://localhost:${PORT}`);

@@ -312,8 +312,14 @@ export class Room {
     if (this.resultReported) return;
     const left = this.seats.left;
     const right = this.seats.right;
-    if (!left || !right || !left.vatarMatchId || left.vatarMatchId !== right.vatarMatchId) return;
-    if (!VATAR_LIVE || !VATAR_RESULTS_SECRET) return;
+    if (!left || !right || !left.vatarMatchId || left.vatarMatchId !== right.vatarMatchId) {
+      console.log(`[room ${this.code}] no shared Vatar match; result not reported`);
+      return;
+    }
+    if (!VATAR_LIVE || !VATAR_RESULTS_SECRET) {
+      console.log(`[room ${this.code}] VATAR_SECRET / VATAR_RESULTS_SECRET not set; result not reported`);
+      return;
+    }
 
     this.resultReported = true;
     try {
