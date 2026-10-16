@@ -225,15 +225,14 @@ export class Juice {
   }
 
   /** Make it unmistakable which side the player is on. */
-  teamBanner(team: Team): void {
-    const colour = team === "left" ? "#2a6bff" : "#ff3b3b";
-    void this.d.words.pop(`YOU ARE ${team === "left" ? "BLUE" : "RED"}`, {
+  teamBanner(colour: { name: string; css: string }): void {
+    void this.d.words.pop(`YOU ARE ${colour.name}`, {
       mode: "stagger",
       size: 0.62,
       y: 0.2,
       hold: 1500,
       color: "#fff",
-      burst: colour,
+      burst: colour.css,
       gap: 220,
       shock: true,
     });

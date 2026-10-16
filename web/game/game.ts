@@ -12,7 +12,7 @@ import { loadBallModel } from "../scene/ball";
 import { loadFigureGeometry } from "../scene/figure";
 import { createTable, type TableView } from "../scene/table";
 import { readStat, saveSettings, settings, writeStat } from "../settings";
-import { equip, equippedFor, SHOP, unequip } from "../shop";
+import { equip, equippedFor, myColour, SHOP, unequip } from "../shop";
 import { other } from "../theme";
 import { createHud, type Hud } from "../ui/hud";
 import { Screens } from "../ui/screens";
@@ -429,8 +429,7 @@ export class Game {
   }
 
   private matchStatus(session: Session): string {
-    const side = this.myTeam === "left" ? "BLUE" : "RED";
-    return `YOU ARE ${side} · VS ${session.names[other(this.myTeam)].toUpperCase()}`;
+    return `YOU ARE ${myColour(this.myTeam).name} · VS ${session.names[other(this.myTeam)].toUpperCase()}`;
   }
 
   /** Connection trouble, ours or theirs. The server pauses play while someone reconnects. */
@@ -483,6 +482,7 @@ export class Game {
     this.table?.setActive(this.input.activeRod());
 
     this.hud.setNames(names, this.myTeam);
+    this.hud.setMyColor(this.myTeam, equippedFor("kit") ? myColour(this.myTeam).css : null);
     this.hud.show(true);
     this.hud.setStatus(this.matchStatus(session));
     this.table?.setOwnTeam(this.myTeam);
@@ -550,7 +550,7 @@ export class Game {
 
   private tutorialSteps(): TutorialStep[] {
     const touch = this.touch;
-    const colour = this.myTeam === "left" ? "BLUE" : "RED";
+    const colour = myColour(this.myTeam).name;
     const ownEnd = this.myTeam === "left" ? -1 : 1;
     const el = (sel: string): Rect | null => this.hud.query(sel)?.getBoundingClientRect() ?? null;
     const mineRods = RODS.filter((r) => r.team === this.myTeam);
@@ -625,7 +625,7 @@ export class Game {
     this.rig.zoomTo(1);
     this.holdOpen = false;
     this.rig.intro(Math.min(2700, countdownMs - 250)); // cinematic fly-down the pitch
-    this.timers.push(window.setTimeout(() => this.juice.teamBanner(this.myTeam), 150));
+    this.timers.push(window.setTimeout(() => this.juice.teamBanner(myColour(this.myTeam)), 150));
 
     // Count down 3-2-1 on the second marks.
     const steps = Math.round(countdownMs / 1000);

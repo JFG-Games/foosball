@@ -3,7 +3,7 @@ import type { Difficulty } from "@shared/bot";
 import type { MatchStats } from "@shared/types";
 import { sfx } from "../audio";
 import { saveSettings, settings } from "../settings";
-import { KIND_LABEL, type ShopItem, type ShopKind } from "../shop";
+import { KIND_LABEL, myColour, type ShopItem, type ShopKind } from "../shop";
 import type { Identity, Leaderboard } from "../vatar/client";
 
 /**
@@ -177,7 +177,7 @@ export class Screens {
               <div>${d.name}<small>${d.blurb}</small></div><span class="stars">${d.stars}</span></button>`,
           ).join("")}
         </div>
-        <p>You play BLUE. First to 3 goals wins, or lead after 3 minutes.</p>
+        <p>You play ${esc(myColour("left").name)}. First to 3 goals wins, or lead after 3 minutes.</p>
         <button class="btn ghost tiny" data-go="back">← BACK</button>
       </div>`,
       true,

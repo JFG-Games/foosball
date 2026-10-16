@@ -1,4 +1,6 @@
 import { readStat, writeStat } from "./settings";
+import { TEAM_HEX, TEAM_NAME } from "./theme";
+import type { Team } from "@shared/constants";
 import { owns } from "./vatar/client";
 
 /**
@@ -18,12 +20,14 @@ export interface ShopItem {
   blurb: string;
   /** The colour it applies, and the swatch shown in the shop. */
   color: number;
+  /** What a kit is called in "YOU ARE GOLD". */
+  colourName?: string;
 }
 
 export const SHOP: ShopItem[] = [
-  { id: "gold_kit", kind: "kit", name: "Gold Kit", blurb: "Shiny gold players", color: 0xf2b705 },
-  { id: "ice_kit", kind: "kit", name: "Ice Kit", blurb: "Cool icy-blue players", color: 0x19d3ff },
-  { id: "pink_kit", kind: "kit", name: "Pink Kit", blurb: "Hot pink players", color: 0xff4fd8 },
+  { id: "gold_kit", kind: "kit", name: "Gold Kit", blurb: "Shiny gold players", color: 0xf2b705, colourName: "GOLD" },
+  { id: "ice_kit", kind: "kit", name: "Ice Kit", blurb: "Cool icy-blue players", color: 0x19d3ff, colourName: "ICE" },
+  { id: "pink_kit", kind: "kit", name: "Pink Kit", blurb: "Hot pink players", color: 0xff4fd8, colourName: "PINK" },
   { id: "fire_trail", kind: "trail", name: "Fire Trail", blurb: "Flames follow the ball", color: 0xff7a1a },
   { id: "gold_party", kind: "party", name: "Gold Party", blurb: "Gold confetti when you score", color: 0xffd23f },
 ];
@@ -53,4 +57,15 @@ export function equip(item: ShopItem): void {
 
 export function unequip(kind: ShopKind): void {
   writeStat("equipped", { ...readEquipped(), [kind]: "" });
+}
+
+/** What to call the local player's side, and the colour to show: the equipped kit, or the team colour. */
+export function myColour(team: Team): { name: string; hex: number; css: string } {
+  const kit = equippedFor("kit");
+  const hex = kit ? kit.color : TEAM_HEX[team];
+  return {
+    name: kit?.colourName ?? TEAM_NAME[team],
+    hex,
+    css: `#${hex.toString(16).padStart(6, "0")}`,
+  };
 }

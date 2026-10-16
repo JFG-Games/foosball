@@ -28,6 +28,8 @@ export interface Hud {
   show(on: boolean): void;
   setTouch(on: boolean): void;
   setNames(names: Record<Team, string>, mine: Team | null): void;
+  /** Paint your own scoreboard plate in your kit colour (null = the team colour). */
+  setMyColor(team: Team, css: string | null): void;
   setScore(score: Record<Team, number>, bumped?: Team): void;
   setStatus(text: string): void;
   setRod(slot: number, auto: boolean, announce?: boolean): void;
@@ -148,6 +150,11 @@ export function createHud(root: HTMLElement, handlers: HudHandlers): Hud {
       youEls[1].hidden = mine !== "right";
       plates.left.classList.toggle("mine", mine === "left");
       plates.right.classList.toggle("mine", mine === "right");
+    },
+
+    setMyColor(team: Team, css: string | null): void {
+      for (const side of ["left", "right"] as const) plates[side].style.removeProperty("--team");
+      if (css) plates[team].style.setProperty("--team", css);
     },
 
     setScore(score: Record<Team, number>, bumped?: Team): void {
